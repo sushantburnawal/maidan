@@ -1,0 +1,1 @@
+export const POSTS_REPOSITORY = Symbol('POSTS_REPOSITORY');
