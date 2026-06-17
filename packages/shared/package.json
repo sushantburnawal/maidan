@@ -1,0 +1,28 @@
+{
+  "name": "@maidan/shared",
+  "version": "0.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./contracts/events.schema.json": "./contracts/events.schema.json"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node scripts/generate-events-schema.mjs",
+    "lint": "eslint \"src/**/*.ts\"",
+    "test": "jest",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "ajv": "^8.17.1",
+    "zod-to-json-schema": "^3.24.1"
+  }
+}

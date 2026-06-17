@@ -1,0 +1,7 @@
+node_modules
+dist
+coverage
+.turbo
+.venv
+apps/ai/.venv
+apps/ai/.ruff_cache

@@ -1,0 +1,1 @@
+-- Seed data is intentionally empty for the monorepo scaffold.

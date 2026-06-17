@@ -1,0 +1,11 @@
+export const AUTH_REDIS_STORE = Symbol('AUTH_REDIS_STORE');
+export const PROFILES_REPOSITORY = Symbol('PROFILES_REPOSITORY');
+export const SMS_PROVIDER = Symbol('SMS_PROVIDER');
+
+export const OTP_TTL_SECONDS = 120;
+export const OTP_RATE_LIMIT_MAX_REQUESTS = 5;
+export const OTP_RATE_LIMIT_WINDOW_SECONDS = 60 * 60;
+export const OTP_MAX_VERIFY_ATTEMPTS = 5;
+
+export const DEFAULT_ACCESS_TOKEN_TTL = '15m';
+export const DEFAULT_REFRESH_TOKEN_TTL = '30d';
