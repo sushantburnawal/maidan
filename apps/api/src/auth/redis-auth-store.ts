@@ -1,18 +1,12 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
-import Redis from 'ioredis';
+import { Inject, Injectable } from '@nestjs/common';
+import type Redis from 'ioredis';
 
+import { REDIS_CLIENT } from '../redis/redis.constants';
 import type { AuthRedisStore } from './auth.types';
 
 @Injectable()
-export class IoredisAuthStore implements AuthRedisStore, OnModuleDestroy {
-  private readonly client: Redis;
-
-  constructor() {
-    this.client = new Redis(getRedisUrl(), {
-      lazyConnect: true,
-      maxRetriesPerRequest: 1
-    });
-  }
+export class IoredisAuthStore implements AuthRedisStore {
+  constructor(@Inject(REDIS_CLIENT) private readonly client: Redis) {}
 
   async get(key: string): Promise<string | null> {
     return this.client.get(key);
@@ -41,27 +35,4 @@ export class IoredisAuthStore implements AuthRedisStore, OnModuleDestroy {
   async pttl(key: string): Promise<number> {
     return this.client.pttl(key);
   }
-
-  async onModuleDestroy(): Promise<void> {
-    if (this.client.status === 'end') {
-      return;
-    }
-
-    try {
-      await this.client.quit();
-    } catch {
-      this.client.disconnect();
-    }
-  }
-}
-
-function getRedisUrl(): string {
-  if (process.env.REDIS_URL !== undefined && process.env.REDIS_URL.length > 0) {
-    return process.env.REDIS_URL;
-  }
-
-  const host = process.env.REDIS_HOST ?? 'localhost';
-  const port = process.env.REDIS_PORT ?? '6379';
-
-  return `redis://${host}:${port}`;
 }

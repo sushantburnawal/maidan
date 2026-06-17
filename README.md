@@ -53,3 +53,22 @@ curl http://localhost:8000/health
 ```
 
 Both services return a JSON response with `status` set to `ok`.
+
+## Outbox Relay
+
+The API runs the Fact-to-Meaning outbox relay in-process through `OutboxModule`. It polls
+`domain_events where processed_at is null`, publishes each event to the shared Redis stream
+`STREAM_DOMAIN_EVENTS`, enqueues derived BullMQ jobs on the shared queue constants, and then marks the
+row processed. The runner is enabled by default outside Jest and can be controlled with:
+
+```sh
+OUTBOX_RELAY_ENABLED=true
+OUTBOX_RELAY_INTERVAL_MS=5000
+OUTBOX_RELAY_BATCH_SIZE=50
+```
+
+Relay lag is exposed at:
+
+```sh
+curl http://localhost:3000/internal/outbox/health
+```

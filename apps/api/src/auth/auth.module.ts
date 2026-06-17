@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { RedisModule } from '../redis/redis.module';
 import { AuthController } from './auth.controller';
 import { AUTH_REDIS_STORE, PROFILES_REPOSITORY, SMS_PROVIDER } from './auth.constants';
 import { AuthService } from './auth.service';
@@ -9,6 +10,7 @@ import { IoredisAuthStore } from './redis-auth-store';
 import { FakeSmsProvider, getMsg91AuthKey, Msg91SmsProvider } from './sms.provider';
 
 @Module({
+  imports: [RedisModule],
   controllers: [AuthController],
   providers: [
     AuthService,
