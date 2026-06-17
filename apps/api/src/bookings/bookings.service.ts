@@ -1,6 +1,7 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 
 import { BOOKINGS_REPOSITORY, RESPONSIBLE_CANCELLATION_NOTE } from './bookings.constants';
+import { PaymentsService } from '../payments/payments.service';
 import type {
   BookingsRepository,
   BookingRecord,
@@ -12,7 +13,10 @@ import type { CreateBookingDto } from './dto/create-booking.dto';
 
 @Injectable()
 export class BookingsService {
-  constructor(@Inject(BOOKINGS_REPOSITORY) private readonly repository: BookingsRepository) {}
+  constructor(
+    @Inject(BOOKINGS_REPOSITORY) private readonly repository: BookingsRepository,
+    private readonly paymentsService: PaymentsService
+  ) {}
 
   async createBooking(explorerId: string, dto: CreateBookingDto): Promise<CreateBookingResponse> {
     const booking = await this.repository.createBooking(explorerId, toCreateBookingInput(dto));
@@ -32,6 +36,10 @@ export class BookingsService {
 
     if (booking === undefined) {
       throw new NotFoundException('Booking not found');
+    }
+
+    if (booking.payment_id !== null) {
+      await this.paymentsService.refundCancelledBookingIfPaid(booking.id);
     }
 
     return {
