@@ -8,6 +8,7 @@ import { OutboxModule } from './outbox/outbox.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PostsModule } from './posts/posts.module';
 import { ProfilesModule } from './profiles/profiles.module';
+import { RealtimeModule } from './realtime/realtime.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { ProfilesModule } from './profiles/profiles.module';
     BookingsModule,
     PaymentsModule,
     PostsModule,
+    RealtimeModule,
     OutboxModule
   ],
   controllers: [HealthController]
