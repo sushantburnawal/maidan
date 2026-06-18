@@ -8,10 +8,11 @@ ENV PYTHONPATH="/app/apps/ai/src"
 
 WORKDIR /app
 
-COPY apps/ai/pyproject.toml apps/ai/
+COPY apps/ai/pyproject.toml apps/ai/uv.lock apps/ai/
+COPY packages/shared/contracts/events.schema.json packages/shared/contracts/events.schema.json
 
 WORKDIR /app/apps/ai
-RUN uv sync --no-dev
+RUN uv sync --locked --no-dev
 
 WORKDIR /app
 COPY apps/ai apps/ai
