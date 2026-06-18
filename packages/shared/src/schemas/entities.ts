@@ -109,6 +109,7 @@ export const paymentSchema = z
     platform_fee_inr: z.number().int().min(0),
     host_payout_inr: z.number().int().min(0),
     status: paymentStatusSchema,
+    idempotency_key: z.string().min(1),
     raw_callback: jsonValueSchema.nullable(),
     created_at: timestampSchema,
     updated_at: timestampSchema

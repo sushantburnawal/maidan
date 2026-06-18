@@ -444,7 +444,7 @@ insert into seed_payments (
 
 insert into payments (
   id, booking_id, phonepe_order_id, phonepe_txn_id, amount_inr,
-  platform_fee_inr, host_payout_inr, status, raw_callback,
+  platform_fee_inr, host_payout_inr, status, idempotency_key, raw_callback,
   created_at, updated_at
 )
 select
@@ -456,6 +456,7 @@ select
   platform_fee_inr,
   host_payout_inr,
   status,
+  pg_temp.seed_uuid('booking:' || booking_key)::text,
   jsonb_build_object('seed', true, 'phonepe_order_id', phonepe_order_id, 'status', status),
   now(),
   now()
@@ -469,6 +470,7 @@ set
   platform_fee_inr = excluded.platform_fee_inr,
   host_payout_inr = excluded.host_payout_inr,
   status = excluded.status,
+  idempotency_key = excluded.idempotency_key,
   raw_callback = excluded.raw_callback,
   updated_at = excluded.updated_at;
 
