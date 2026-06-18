@@ -43,6 +43,12 @@ Run seed scripts:
 make seed
 ```
 
+Backfill activity embeddings after seeding:
+
+```sh
+pnpm --filter @maidan/ai embeddings:backfill
+```
+
 ## Health Checks
 
 With the local stack running:

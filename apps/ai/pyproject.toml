@@ -10,6 +10,8 @@ dependencies = [
   "jsonschema>=4.23.0,<5.0.0",
   "pydantic-settings>=2.7.0,<3.0.0",
   "redis>=5.2.1,<7.0.0",
+  "sentence-transformers>=3.3.1,<4.0.0",
+  "torch>=2.5.0,<3.0.0",
   "uvicorn[standard]>=0.34.0,<1.0.0"
 ]
 
@@ -23,6 +25,16 @@ dev = [
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu", marker = "sys_platform == 'linux'" }
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

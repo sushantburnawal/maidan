@@ -16,6 +16,9 @@ class DbConnection(Protocol):
     async def fetchrow(self, query: str, *args: object) -> Mapping[str, object] | None:
         pass
 
+    async def fetch(self, query: str, *args: object) -> list[Mapping[str, object]]:
+        pass
+
     async def execute(self, query: str, *args: object) -> object:
         pass
 
@@ -25,6 +28,9 @@ class DbPool(Protocol):
         pass
 
     async def execute(self, query: str, *args: object) -> object:
+        pass
+
+    async def fetch(self, query: str, *args: object) -> list[Mapping[str, object]]:
         pass
 
     async def close(self) -> None:

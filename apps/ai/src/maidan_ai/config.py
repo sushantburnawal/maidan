@@ -44,6 +44,27 @@ class Settings(BaseSettings):
         validation_alias="AI_DEAD_LETTER_STREAM",
     )
 
+    bullmq_prefix: str = Field(default="maidan", validation_alias="BULLMQ_PREFIX")
+    queue_embeddings: str = Field(
+        default="maidan.embeddings",
+        validation_alias="QUEUE_EMBEDDINGS",
+    )
+    embeddings_worker_disabled: bool = Field(
+        default=False,
+        validation_alias="EMBEDDINGS_WORKER_DISABLED",
+    )
+    embeddings_queue_block_seconds: int = Field(
+        default=5,
+        validation_alias="EMBEDDINGS_QUEUE_BLOCK_SECONDS",
+    )
+    embeddings_model: str = Field(
+        default="sentence-transformers/all-mpnet-base-v2",
+        validation_alias="EMBEDDINGS_MODEL",
+    )
+    embeddings_dimensions: int = Field(default=768, validation_alias="EMBEDDINGS_DIMENSIONS")
+    embeddings_device: str = Field(default="", validation_alias="EMBEDDINGS_DEVICE")
+    embeddings_batch_size: int = Field(default=16, validation_alias="EMBEDDINGS_BATCH_SIZE")
+
     events_schema_path: Path = Field(
         default_factory=default_events_schema_path,
         validation_alias="EVENTS_SCHEMA_PATH",
