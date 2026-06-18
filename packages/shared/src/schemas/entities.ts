@@ -168,6 +168,26 @@ export const messageSchema = z
   })
   .strict();
 
+export const notificationDeviceSchema = z
+  .object({
+    id: uuidSchema,
+    profile_id: uuidSchema,
+    token: z.string().min(1),
+    created_at: timestampSchema,
+    updated_at: timestampSchema,
+    last_seen_at: timestampSchema
+  })
+  .strict();
+
+export const notificationSettingsSchema = z
+  .object({
+    profile_id: uuidSchema,
+    push_muted: z.boolean(),
+    created_at: timestampSchema,
+    updated_at: timestampSchema
+  })
+  .strict();
+
 export const domainEventRecordSchema = z
   .object({
     id: z.number().int().positive(),
@@ -198,4 +218,6 @@ export type Post = z.infer<typeof postSchema>;
 export type GroupChat = z.infer<typeof groupChatSchema>;
 export type ChatMember = z.infer<typeof chatMemberSchema>;
 export type Message = z.infer<typeof messageSchema>;
+export type NotificationDevice = z.infer<typeof notificationDeviceSchema>;
+export type NotificationSettings = z.infer<typeof notificationSettingsSchema>;
 export type DomainEventRecord = z.infer<typeof domainEventRecordSchema>;

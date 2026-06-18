@@ -15,6 +15,7 @@ import { AuthService } from '../auth/auth.service';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import type { DomainEventEnvelope } from '../outbox/outbox.types';
 import { RedisInfrastructure } from '../redis/redis.infrastructure';
+import { realtimeUserPresenceKey } from './realtime.constants';
 import { RealtimeService } from './realtime.service';
 import type { BookingChatRecord, MessageRecord } from './realtime.types';
 
@@ -218,6 +219,10 @@ export class RealtimeGateway implements OnApplicationBootstrap, OnModuleDestroy 
     const becameOnline = this.incrementPresence(profileId);
 
     try {
+      if (becameOnline) {
+        await this.markRedisPresenceOnline(profileId);
+      }
+
       await socket.join(userRoom(profileId));
 
       const chatIds = await this.realtimeService.getChatIdsForMember(profileId);
@@ -233,7 +238,9 @@ export class RealtimeGateway implements OnApplicationBootstrap, OnModuleDestroy 
         this.emitPresence(socket, 'online');
       }
     } catch (error) {
-      this.decrementPresence(profileId);
+      if (this.decrementPresence(profileId)) {
+        await this.markRedisPresenceOffline(profileId);
+      }
       socket.emit('realtime:error', { message: toClientErrorMessage(error) });
       socket.disconnect(true);
     }
@@ -250,7 +257,7 @@ export class RealtimeGateway implements OnApplicationBootstrap, OnModuleDestroy 
       void this.handleTyping(socket, payload, ack);
     });
     socket.on('disconnect', () => {
-      this.handleDisconnect(socket);
+      void this.handleDisconnect(socket);
     });
   }
 
@@ -314,10 +321,11 @@ export class RealtimeGateway implements OnApplicationBootstrap, OnModuleDestroy 
     }
   }
 
-  private handleDisconnect(socket: RealtimeSocket): void {
+  private async handleDisconnect(socket: RealtimeSocket): Promise<void> {
     const profileId = socket.data.profileId;
 
     if (this.decrementPresence(profileId)) {
+      await this.markRedisPresenceOffline(profileId);
       this.emitPresence(socket, 'offline');
     }
   }
@@ -386,6 +394,39 @@ export class RealtimeGateway implements OnApplicationBootstrap, OnModuleDestroy 
     this.onlineCounts.set(profileId, currentCount - 1);
 
     return false;
+  }
+
+  private async markRedisPresenceOnline(profileId: string): Promise<void> {
+    if (isRedisPresenceDisabled()) {
+      return;
+    }
+
+    try {
+      await this.redisInfrastructure.client.incr(realtimeUserPresenceKey(profileId));
+    } catch (error) {
+      this.logger.warn(
+        `Failed to record online presence for profile=${profileId}: ${toClientErrorMessage(error)}`
+      );
+    }
+  }
+
+  private async markRedisPresenceOffline(profileId: string): Promise<void> {
+    if (isRedisPresenceDisabled()) {
+      return;
+    }
+
+    try {
+      const key = realtimeUserPresenceKey(profileId);
+      const nextCount = await this.redisInfrastructure.client.decr(key);
+
+      if (nextCount <= 0) {
+        await this.redisInfrastructure.client.del(key);
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Failed to record offline presence for profile=${profileId}: ${toClientErrorMessage(error)}`
+      );
+    }
   }
 
   private getServer(): Server<ClientToServerEvents, ServerToClientEvents, never, SocketData> {
@@ -562,5 +603,15 @@ function isRedisAdapterDisabled(): boolean {
 
   return (
     process.env.NODE_ENV === 'test' && process.env.REALTIME_REDIS_ADAPTER_DISABLED !== 'false'
+  );
+}
+
+function isRedisPresenceDisabled(): boolean {
+  if (process.env.REALTIME_REDIS_PRESENCE_DISABLED === 'true') {
+    return true;
+  }
+
+  return (
+    process.env.NODE_ENV === 'test' && process.env.REALTIME_REDIS_PRESENCE_DISABLED !== 'false'
   );
 }

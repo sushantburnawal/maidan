@@ -44,37 +44,35 @@ export class OutboxRelayService {
       const streamEntryId = await this.publishToStream(event);
       streamEntries.push(streamEntryId);
 
-      const route = this.getDerivedJobRoute(event.event_type);
+      const routes = this.getDerivedJobRoutes(event.event_type);
 
-      if (route === undefined) {
-        return;
-      }
+      for (const route of routes) {
+        const queue = this.redisInfrastructure.getQueue<DomainEventJobData>(route.queueName);
 
-      const queue = this.redisInfrastructure.getQueue<DomainEventJobData>(route.queueName);
-
-      await queue.add(
-        event.event_type,
-        {
-          ...event,
-          stream_entry_id: streamEntryId
-        },
-        {
-          jobId: getDerivedJobId(event, route.queueName),
-          attempts: 3,
-          backoff: {
-            type: 'exponential',
-            delay: 1_000
+        await queue.add(
+          event.event_type,
+          {
+            ...event,
+            stream_entry_id: streamEntryId
           },
-          removeOnComplete: {
-            age: 24 * 60 * 60,
-            count: 1_000
-          },
-          removeOnFail: {
-            age: 7 * 24 * 60 * 60
+          {
+            jobId: getDerivedJobId(event, route.queueName),
+            attempts: 3,
+            backoff: {
+              type: 'exponential',
+              delay: 1_000
+            },
+            removeOnComplete: {
+              age: 24 * 60 * 60,
+              count: 1_000
+            },
+            removeOnFail: {
+              age: 7 * 24 * 60 * 60
+            }
           }
-        }
-      );
-      jobsEnqueued += 1;
+        );
+        jobsEnqueued += 1;
+      }
     });
 
     return {
@@ -109,23 +107,39 @@ export class OutboxRelayService {
     return streamEntryId;
   }
 
-  private getDerivedJobRoute(eventType: string): DerivedJobRoute | undefined {
+  private getDerivedJobRoutes(eventType: string): DerivedJobRoute[] {
     switch (eventType) {
       case 'activity.published':
-        return {
-          queueName: QUEUE_EMBEDDINGS
-        };
+        return [
+          {
+            queueName: QUEUE_EMBEDDINGS
+          }
+        ];
       case 'post.created':
+        return [
+          {
+            queueName: QUEUE_MODERATION
+          }
+        ];
       case 'message.created':
-        return {
-          queueName: QUEUE_MODERATION
-        };
+        return [
+          {
+            queueName: QUEUE_MODERATION
+          },
+          {
+            queueName: QUEUE_NOTIFICATIONS
+          }
+        ];
       case 'booking.confirmed':
-        return {
-          queueName: QUEUE_NOTIFICATIONS
-        };
+      case 'booking.cancelled':
+      case 'payment.failed':
+        return [
+          {
+            queueName: QUEUE_NOTIFICATIONS
+          }
+        ];
       default:
-        return undefined;
+        return [];
     }
   }
 }

@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { QUEUE_EMBEDDINGS, QUEUE_MODERATION, QUEUE_NOTIFICATIONS } from '@maidan/shared';
-import { Queue, type QueueOptions } from 'bullmq';
+import { Queue, Worker, type Processor, type QueueOptions, type WorkerOptions } from 'bullmq';
 import Redis, { type RedisOptions } from 'ioredis';
 
 const BULLMQ_QUEUE_NAMES = [QUEUE_EMBEDDINGS, QUEUE_MODERATION, QUEUE_NOTIFICATIONS] as const;
@@ -45,6 +45,26 @@ export class RedisInfrastructure implements OnModuleDestroy {
     return queue as unknown as Queue<DataType>;
   }
 
+  createWorker<DataType = unknown, ResultType = unknown>(
+    queueName: BullMqQueueName,
+    processor: Processor<DataType, ResultType>
+  ): Worker<DataType, ResultType> {
+    const worker = new Worker<DataType, ResultType>(
+      queueName,
+      processor,
+      createWorkerOptions(this.redisUrl)
+    );
+
+    worker.on('error', (error) => {
+      this.logger.error(
+        `BullMQ worker error queue=${queueName}`,
+        error instanceof Error ? error.stack : String(error)
+      );
+    });
+
+    return worker;
+  }
+
   async onModuleDestroy(): Promise<void> {
     await Promise.all(Array.from(this.queues.values(), (queue) => queue.close()));
 
@@ -61,6 +81,14 @@ export class RedisInfrastructure implements OnModuleDestroy {
 }
 
 function createQueueOptions(redisUrl: string): QueueOptions {
+  return {
+    connection: parseRedisUrl(redisUrl),
+    prefix: process.env.BULLMQ_PREFIX ?? 'maidan',
+    skipWaitingForReady: true
+  };
+}
+
+function createWorkerOptions(redisUrl: string): WorkerOptions {
   return {
     connection: parseRedisUrl(redisUrl),
     prefix: process.env.BULLMQ_PREFIX ?? 'maidan',
