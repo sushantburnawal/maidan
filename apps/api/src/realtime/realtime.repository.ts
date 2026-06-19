@@ -154,6 +154,7 @@ export class PostgresRealtimeRepository implements RealtimeRepository, OnModuleD
           select ${messageColumns('m')}
           from messages m
           where m.chat_id = $1
+            and m.is_hidden = false
             and (
               $2::timestamptz is null
               or (m.created_at, m.id) < ($2::timestamptz, $3::uuid)

@@ -49,13 +49,30 @@ class Settings(BaseSettings):
         default="maidan.embeddings",
         validation_alias="QUEUE_EMBEDDINGS",
     )
+    queue_moderation: str = Field(
+        default="maidan.moderation",
+        validation_alias="QUEUE_MODERATION",
+    )
     embeddings_worker_disabled: bool = Field(
         default=False,
         validation_alias="EMBEDDINGS_WORKER_DISABLED",
     )
+    moderation_worker_disabled: bool = Field(
+        default=False,
+        validation_alias="MODERATION_WORKER_DISABLED",
+    )
     embeddings_queue_block_seconds: int = Field(
         default=5,
         validation_alias="EMBEDDINGS_QUEUE_BLOCK_SECONDS",
+    )
+    moderation_queue_block_seconds: int = Field(
+        default=5,
+        validation_alias="MODERATION_QUEUE_BLOCK_SECONDS",
+    )
+    moderation_batch_size: int = Field(default=8, validation_alias="MODERATION_BATCH_SIZE")
+    moderation_batch_window_seconds: float = Field(
+        default=0.25,
+        validation_alias="MODERATION_BATCH_WINDOW_SECONDS",
     )
     embeddings_model: str = Field(
         default="sentence-transformers/all-mpnet-base-v2",

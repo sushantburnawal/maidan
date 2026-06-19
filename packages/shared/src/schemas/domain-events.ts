@@ -161,6 +161,20 @@ export const messageCreatedPayloadSchema = z
   })
   .strict();
 
+export const moderationTargetTypeSchema = z.enum(['post', 'message']);
+
+export const moderationBlockedPayloadSchema = z
+  .object({
+    target_type: moderationTargetTypeSchema,
+    target_id: uuidSchema,
+    author_id: uuidSchema,
+    severity: z.number().int().min(0).max(3),
+    categories: z.array(z.string().min(1)),
+    reason: z.string().min(1),
+    created_at: timestampSchema
+  })
+  .strict();
+
 export const activityPublishedEventSchema = domainEventEnvelopeSchema
   .extend({
     aggregate_type: z.literal('activity'),
@@ -241,6 +255,14 @@ export const messageCreatedEventSchema = domainEventEnvelopeSchema
   })
   .strict();
 
+export const moderationBlockedEventSchema = domainEventEnvelopeSchema
+  .extend({
+    aggregate_type: z.literal('moderation'),
+    event_type: z.literal('moderation.blocked'),
+    payload: moderationBlockedPayloadSchema
+  })
+  .strict();
+
 export const domainEventSchema = z.discriminatedUnion('event_type', [
   activityPublishedEventSchema,
   activityUpdatedEventSchema,
@@ -251,7 +273,8 @@ export const domainEventSchema = z.discriminatedUnion('event_type', [
   paymentFailedEventSchema,
   reviewCreatedEventSchema,
   postCreatedEventSchema,
-  messageCreatedEventSchema
+  messageCreatedEventSchema,
+  moderationBlockedEventSchema
 ]);
 
 export const domainEventTypeSchema = z.enum([
@@ -264,7 +287,8 @@ export const domainEventTypeSchema = z.enum([
   'payment.failed',
   'review.created',
   'post.created',
-  'message.created'
+  'message.created',
+  'moderation.blocked'
 ]);
 
 export type ActivityPublishedPayload = z.infer<typeof activityPublishedPayloadSchema>;
@@ -277,6 +301,8 @@ export type PaymentFailedPayload = z.infer<typeof paymentFailedPayloadSchema>;
 export type ReviewCreatedPayload = z.infer<typeof reviewCreatedPayloadSchema>;
 export type PostCreatedPayload = z.infer<typeof postCreatedPayloadSchema>;
 export type MessageCreatedPayload = z.infer<typeof messageCreatedPayloadSchema>;
+export type ModerationTargetType = z.infer<typeof moderationTargetTypeSchema>;
+export type ModerationBlockedPayload = z.infer<typeof moderationBlockedPayloadSchema>;
 
 export type ActivityUpdatedField = z.infer<typeof activityUpdatedFieldSchema>;
 export type DomainEventType = z.infer<typeof domainEventTypeSchema>;

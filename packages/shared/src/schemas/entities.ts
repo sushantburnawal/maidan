@@ -15,6 +15,7 @@ export const activityStatusSchema = z.enum(['draft', 'published', 'paused', 'arc
 export const slotStatusSchema = z.enum(['open', 'full', 'closed', 'cancelled']);
 export const bookingStatusSchema = z.enum(['pending', 'confirmed', 'cancelled', 'refunded']);
 export const paymentStatusSchema = z.enum(['initiated', 'success', 'failed', 'refunded']);
+export const moderationStatusSchema = z.enum(['pending', 'ok', 'blocked']);
 
 export const profileSchema = z
   .object({
@@ -137,6 +138,8 @@ export const postSchema = z
     body: z.string().min(1),
     media: mediaSchema,
     linked_activity_id: uuidSchema.nullable(),
+    moderation_status: moderationStatusSchema,
+    is_hidden: z.boolean(),
     created_at: timestampSchema
   })
   .strict();
@@ -164,6 +167,8 @@ export const messageSchema = z
     chat_id: uuidSchema,
     sender_id: uuidSchema,
     body: z.string().min(1),
+    moderation_status: moderationStatusSchema,
+    is_hidden: z.boolean(),
     created_at: timestampSchema
   })
   .strict();
@@ -205,6 +210,7 @@ export type ActivityStatus = z.infer<typeof activityStatusSchema>;
 export type SlotStatus = z.infer<typeof slotStatusSchema>;
 export type BookingStatus = z.infer<typeof bookingStatusSchema>;
 export type PaymentStatus = z.infer<typeof paymentStatusSchema>;
+export type ModerationStatus = z.infer<typeof moderationStatusSchema>;
 
 export type Profile = z.infer<typeof profileSchema>;
 export type HostProfile = z.infer<typeof hostProfileSchema>;

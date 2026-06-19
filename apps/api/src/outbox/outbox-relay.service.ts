@@ -130,6 +130,12 @@ export class OutboxRelayService {
             queueName: QUEUE_NOTIFICATIONS
           }
         ];
+      case 'moderation.blocked':
+        return [
+          {
+            queueName: QUEUE_NOTIFICATIONS
+          }
+        ];
       case 'booking.confirmed':
       case 'booking.cancelled':
       case 'payment.failed':

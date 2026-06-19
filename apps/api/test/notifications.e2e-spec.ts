@@ -390,6 +390,46 @@ describe('Notifications module', () => {
       }
     ]);
   });
+
+  it('pushes severe moderation.blocked notifications to the author', async () => {
+    const targetId = randomUUID();
+    const authorId = randomUUID();
+
+    repository.addDevice(authorId, 'author-device-token');
+
+    await expect(
+      consumer.handleJob(
+        domainEventJob(5, 'moderation', targetId, 'moderation.blocked', {
+          target_type: 'message',
+          target_id: targetId,
+          author_id: authorId,
+          severity: 3,
+          categories: ['violence', 'harassment'],
+          reason: 'Threatens physical harm.',
+          created_at: '2026-06-17T09:15:00.000Z'
+        })
+      )
+    ).resolves.toMatchObject({
+      recipients_considered: 1,
+      pushes_sent: 1
+    });
+    expect(pushProvider.sentMessages).toEqual([
+      {
+        token: 'author-device-token',
+        notification: {
+          title: 'Content hidden',
+          body: 'Your recent content was hidden because it broke Maidan community guidelines.'
+        },
+        data: {
+          event_type: 'moderation.blocked',
+          domain_event_id: '5',
+          target_type: 'message',
+          target_id: targetId,
+          severity: '3'
+        }
+      }
+    ]);
+  });
 });
 
 function domainEventJob(

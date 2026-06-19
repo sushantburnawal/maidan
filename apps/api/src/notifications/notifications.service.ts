@@ -3,6 +3,7 @@ import {
   bookingCancelledPayloadSchema,
   bookingConfirmedPayloadSchema,
   messageCreatedPayloadSchema,
+  moderationBlockedPayloadSchema,
   paymentFailedPayloadSchema
 } from '@maidan/shared';
 
@@ -107,6 +108,8 @@ export class NotificationsService {
         return this.paymentFailedPlan(job);
       case 'message.created':
         return this.messageCreatedPlan(job);
+      case 'moderation.blocked':
+        return this.moderationBlockedPlan(job);
       default:
         return undefined;
     }
@@ -223,6 +226,33 @@ export class NotificationsService {
         activity_id: parsed.data.activity_id
       }),
       offlineOnly: true
+    };
+  }
+
+  private async moderationBlockedPlan(
+    job: DomainEventJobData
+  ): Promise<NotificationPlan | undefined> {
+    const parsed = moderationBlockedPayloadSchema.safeParse(job.payload);
+
+    if (!parsed.success) {
+      this.logger.warn(`Ignored invalid moderation.blocked notification event=${job.id}`);
+      return undefined;
+    }
+
+    return {
+      recipientIds: [parsed.data.author_id],
+      notification: {
+        title: 'Content hidden',
+        body: 'Your recent content was hidden because it broke Maidan community guidelines.'
+      },
+      data: compactData({
+        event_type: job.event_type,
+        domain_event_id: String(job.id),
+        target_type: parsed.data.target_type,
+        target_id: parsed.data.target_id,
+        severity: String(parsed.data.severity)
+      }),
+      offlineOnly: false
     };
   }
 }

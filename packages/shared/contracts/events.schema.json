@@ -925,6 +925,90 @@
             "payload"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "aggregate_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "aggregate_type": {
+              "type": "string",
+              "const": "moderation"
+            },
+            "event_type": {
+              "type": "string",
+              "const": "moderation.blocked"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "target_type": {
+                  "type": "string",
+                  "enum": [
+                    "post",
+                    "message"
+                  ]
+                },
+                "target_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "author_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "severity": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 3
+                },
+                "categories": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "reason": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": [
+                "target_type",
+                "target_id",
+                "author_id",
+                "severity",
+                "categories",
+                "reason",
+                "created_at"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "id",
+            "aggregate_id",
+            "created_at",
+            "aggregate_type",
+            "event_type",
+            "payload"
+          ],
+          "additionalProperties": false
         }
       ]
     }

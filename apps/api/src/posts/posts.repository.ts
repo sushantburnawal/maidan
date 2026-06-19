@@ -77,6 +77,7 @@ export class PostgresPostsRepository implements PostsRepository, OnModuleDestroy
         feedPostsSql(
           `
           where (p.linked_activity_id is null or a.id is not null)
+            and p.is_hidden = false
             and (
               $1::timestamptz is null
               or (p.created_at, p.id) < ($1::timestamptz, $2::uuid)
@@ -99,6 +100,7 @@ export class PostgresPostsRepository implements PostsRepository, OnModuleDestroy
         feedPostsSql(
           `
           where p.author_id = $1
+            and p.is_hidden = false
             and (p.linked_activity_id is null or a.id is not null)
             and (
               $2::timestamptz is null

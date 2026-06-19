@@ -94,7 +94,7 @@ class AnthropicClient:
         call_kind: str,
     ) -> str:
         api_key = self._api_key()
-        api_messages = self._api_messages(messages, prompt_cache)
+        api_messages = self._api_messages(messages, prompt_cache and system is None)
         payload: JsonObject = {
             "model": model,
             "max_tokens": max_tokens,

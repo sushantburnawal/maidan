@@ -16,6 +16,7 @@ DOMAIN_EVENT_TYPES = (
     "review.created",
     "post.created",
     "message.created",
+    "moderation.blocked",
 )
 
 

@@ -21,15 +21,27 @@ from maidan_ai.embeddings import SentenceTransformerEmbedder
 from maidan_ai.event_bus import EventConsumerConfig, RedisDomainEventConsumer, RedisStreamClient
 from maidan_ai.handlers import build_default_handlers
 from maidan_ai.jobs import AiJobRepository
+from maidan_ai.moderation import (
+    BullMqModerationConsumer,
+    ModerationQueueConfig,
+    ModerationQueueProcessor,
+    ModerationRepository,
+    ModerationService,
+)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = Settings()
     app.state.settings = settings
-    app.state.anthropic = AnthropicClient(settings)
+    anthropic = AnthropicClient(settings)
+    app.state.anthropic = anthropic
 
-    if settings.ai_consumer_disabled and settings.embeddings_worker_disabled:
+    if (
+        settings.ai_consumer_disabled
+        and settings.embeddings_worker_disabled
+        and settings.moderation_worker_disabled
+    ):
         yield
         return
 
@@ -38,17 +50,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         redis.Redis,
         redis.from_url(settings.redis_url, decode_responses=True),  # type: ignore[no-untyped-call]
     )
-    embedder = SentenceTransformerEmbedder(
-        settings.embeddings_model,
-        dimensions=settings.embeddings_dimensions,
-        device=settings.embeddings_device or None,
-    )
-    activity_embedding_service = ActivityEmbeddingService(
-        ActivityEmbeddingRepository(pool, dimensions=settings.embeddings_dimensions),
-        embedder,
-    )
+    activity_embedding_service: ActivityEmbeddingService | None = None
+    if not settings.ai_consumer_disabled or not settings.embeddings_worker_disabled:
+        embedder = SentenceTransformerEmbedder(
+            settings.embeddings_model,
+            dimensions=settings.embeddings_dimensions,
+            device=settings.embeddings_device or None,
+        )
+        activity_embedding_service = ActivityEmbeddingService(
+            ActivityEmbeddingRepository(pool, dimensions=settings.embeddings_dimensions),
+            embedder,
+        )
     consumer: RedisDomainEventConsumer | None = None
     embeddings_queue_consumer: BullMqEmbeddingsConsumer | None = None
+    moderation_queue_consumer: BullMqModerationConsumer | None = None
 
     if not settings.ai_consumer_disabled:
         validator = DomainEventValidator.from_schema_path(settings.events_schema_path)
@@ -72,6 +87,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await consumer.start()
 
     if not settings.embeddings_worker_disabled:
+        if activity_embedding_service is None:
+            raise RuntimeError("Activity embedding service was not initialized")
         embeddings_queue_consumer = BullMqEmbeddingsConsumer(
             redis=cast(BullMqRedisClient, redis_client),
             processor=ActivityEmbeddingQueueProcessor(activity_embedding_service),
@@ -83,17 +100,39 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
         await embeddings_queue_consumer.start()
 
+    if not settings.moderation_worker_disabled:
+        moderation_queue_consumer = BullMqModerationConsumer(
+            redis=cast(BullMqRedisClient, redis_client),
+            processor=ModerationQueueProcessor(
+                ModerationRepository(pool),
+                ModerationService(anthropic),
+            ),
+            config=ModerationQueueConfig(
+                queue_name=settings.queue_moderation,
+                prefix=settings.bullmq_prefix,
+                block_timeout_seconds=settings.moderation_queue_block_seconds,
+                batch_size=settings.moderation_batch_size,
+                batch_window_seconds=settings.moderation_batch_window_seconds,
+            ),
+        )
+        await moderation_queue_consumer.start()
+
     app.state.db_pool = pool
     app.state.redis = redis_client
-    app.state.activity_embedding_service = activity_embedding_service
+    if activity_embedding_service is not None:
+        app.state.activity_embedding_service = activity_embedding_service
     if consumer is not None:
         app.state.event_consumer = consumer
     if embeddings_queue_consumer is not None:
         app.state.embeddings_queue_consumer = embeddings_queue_consumer
+    if moderation_queue_consumer is not None:
+        app.state.moderation_queue_consumer = moderation_queue_consumer
 
     try:
         yield
     finally:
+        if moderation_queue_consumer is not None:
+            await moderation_queue_consumer.stop()
         if embeddings_queue_consumer is not None:
             await embeddings_queue_consumer.stop()
         if consumer is not None:
