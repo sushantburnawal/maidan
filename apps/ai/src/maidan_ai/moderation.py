@@ -23,12 +23,14 @@ from maidan_ai.embedding_queue import (
 )
 from maidan_ai.jobs import EventProcessingState, json_object_from_db
 from maidan_ai.jobs import json_int as job_json_int
+from maidan_ai.observability import correlation_context
 
 logger = logging.getLogger(__name__)
 
 SUPPORTED_MODERATION_EVENTS = {"post.created", "message.created"}
 MODERATION_DECISION_JOB_KIND = "moderation_decision"
 MODERATION_QUEUE_JOB_KIND = "moderation_queue"
+STRUCTURED_OUTPUT_REPAIR_ATTEMPTS = 1
 
 ModerationTargetType = Literal["post", "message"]
 
@@ -453,12 +455,28 @@ class ModerationService:
             return {}
 
         prompt = build_moderation_prompt(items)
-        raw_response = await self._client.cheap_call(
-            prompt,
-            system=MODERATION_RUBRIC,
-            max_tokens=max_tokens_for_items(items),
-        )
-        return parse_moderation_response(raw_response, items)
+        max_tokens = max_tokens_for_items(items)
+        last_error: ModerationModelOutputError | None = None
+
+        for attempt in range(STRUCTURED_OUTPUT_REPAIR_ATTEMPTS + 1):
+            raw_response = await self._client.cheap_call(
+                prompt,
+                system=MODERATION_RUBRIC,
+                max_tokens=max_tokens,
+            )
+            try:
+                return parse_moderation_response(raw_response, items)
+            except ModerationModelOutputError as error:
+                last_error = error
+                if attempt >= STRUCTURED_OUTPUT_REPAIR_ATTEMPTS:
+                    raise
+                prompt = build_moderation_repair_prompt(
+                    original_prompt=build_moderation_prompt(items),
+                    invalid_response=raw_response,
+                    validation_error=str(error),
+                )
+
+        raise ModerationModelOutputError(str(last_error))
 
 
 class ModerationQueueProcessor:
@@ -476,66 +494,79 @@ class ModerationQueueProcessor:
 
         for job in jobs:
             event = domain_event_from_moderation_job(job)
-            if event["event_type"] not in SUPPORTED_MODERATION_EVENTS:
-                results.append(
-                    ModerationJobResult(
-                        job.id,
-                        {
-                            "handler": "moderation_queue",
-                            "status": "ignored",
-                            "event_type": event["event_type"],
-                        },
-                    )
-                )
-                continue
-
-            content = await self._repository.fetch_content(event)
-            if content is None:
-                results.append(
-                    ModerationJobResult(
-                        job.id,
-                        {
-                            "handler": "moderation_queue",
-                            "status": "missing_content",
-                            "event_type": event["event_type"],
-                        },
-                    )
-                )
-                continue
-
-            item = ModerationItem(job_id=job.id, event=event, content=content)
-            state = await self._repository.begin_decision(item)
-            if state.already_finished:
-                results.append(
-                    ModerationJobResult(
-                        job.id,
-                        {
-                            "handler": "moderation_queue",
-                            "status": "already_finished",
-                            "event_type": event["event_type"],
-                            "target_type": content.target_type,
-                            "target_id": content.target_id,
-                        },
-                    )
-                )
-                continue
-
-            pending_items.append(item)
+            with correlation_context(correlation_id_from_event(event)):
+                item = await self._prepare_item(job, event, results)
+            if item is not None:
+                pending_items.append(item)
 
         if not pending_items:
             return results
 
         try:
-            decisions = await self._moderation_service.moderate(pending_items)
+            with correlation_context(correlation_id_from_event(pending_items[0].event)):
+                decisions = await self._moderation_service.moderate(pending_items)
         except Exception as error:
             raise ModerationBatchProcessingError(str(error), pending_items) from error
 
         for item in pending_items:
-            decision = decisions[item.key]
-            result = await self._repository.apply_decision(item, decision)
+            with correlation_context(correlation_id_from_event(item.event)):
+                decision = decisions[item.key]
+                result = await self._repository.apply_decision(item, decision)
             results.append(ModerationJobResult(item.job_id, result))
 
         return results
+
+    async def _prepare_item(
+        self,
+        job: BullMqJob,
+        event: DomainEvent,
+        results: list[ModerationJobResult],
+    ) -> ModerationItem | None:
+        if event["event_type"] not in SUPPORTED_MODERATION_EVENTS:
+            results.append(
+                ModerationJobResult(
+                    job.id,
+                    {
+                        "handler": "moderation_queue",
+                        "status": "ignored",
+                        "event_type": event["event_type"],
+                    },
+                )
+            )
+            return None
+
+        content = await self._repository.fetch_content(event)
+        if content is None:
+            results.append(
+                ModerationJobResult(
+                    job.id,
+                    {
+                        "handler": "moderation_queue",
+                        "status": "missing_content",
+                        "event_type": event["event_type"],
+                    },
+                )
+            )
+            return None
+
+        item = ModerationItem(job_id=job.id, event=event, content=content)
+        state = await self._repository.begin_decision(item)
+        if state.already_finished:
+            results.append(
+                ModerationJobResult(
+                    job.id,
+                    {
+                        "handler": "moderation_queue",
+                        "status": "already_finished",
+                        "event_type": event["event_type"],
+                        "target_type": content.target_type,
+                        "target_id": content.target_id,
+                    },
+                )
+            )
+            return None
+
+        return item
 
     async def record_batch_failure(
         self,
@@ -892,6 +923,11 @@ def payload_id(event: DomainEvent, key: str) -> str:
     return event["aggregate_id"]
 
 
+def correlation_id_from_event(event: DomainEvent) -> str | None:
+    value = event["payload"].get("correlation_id")
+    return value if isinstance(value, str) and value else None
+
+
 def required_text(data: Mapping[str, JsonValue], key: str) -> str:
     value = data.get(key)
     if not isinstance(value, str) or not value:
@@ -923,6 +959,22 @@ def build_moderation_prompt(items: Sequence[ModerationItem]) -> str:
         '"decisions" array. Each decision must contain exactly these keys: '
         '{"id":string,"allow":bool,"categories":[],"severity":0-3,"reason":string}.\n'
         f"Items: {items_json}"
+    )
+
+
+def build_moderation_repair_prompt(
+    *,
+    original_prompt: str,
+    invalid_response: str,
+    validation_error: str,
+) -> str:
+    return (
+        "The previous moderation response failed JSON validation. Return ONLY a corrected "
+        "JSON response for the original request. Do not include reasoning, Markdown, or "
+        "commentary.\n"
+        f"Validation error: {validation_error}\n"
+        f"Original request:\n{original_prompt}\n"
+        f"Invalid response:\n{invalid_response}"
     )
 
 

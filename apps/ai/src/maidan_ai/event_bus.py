@@ -18,6 +18,7 @@ from maidan_ai.domain_events import (
 )
 from maidan_ai.handlers import DomainEventHandler
 from maidan_ai.jobs import EventProcessingState
+from maidan_ai.observability import correlation_context
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +204,7 @@ class RedisDomainEventConsumer:
     async def _process_entry(self, entry: StreamEntry) -> None:
         try:
             event = stream_entry_to_domain_event(entry.fields)
-            self._validator.validate(event)
+            self._validator.validate(event_for_domain_validation(event))
         except (StreamEventDecodeError, DomainEventValidationError) as error:
             reason = str(error)
             payload = invalid_event_payload(entry, reason)
@@ -223,6 +224,10 @@ class RedisDomainEventConsumer:
             )
             return
 
+        with correlation_context(correlation_id_from_event(event)):
+            await self._process_valid_entry(entry, event)
+
+    async def _process_valid_entry(self, entry: StreamEntry, event: DomainEvent) -> None:
         state = await self._jobs.begin_event(event, entry.entry_id)
         if state.already_finished:
             await self._ack(entry.entry_id)
@@ -372,6 +377,25 @@ def required_field(values: Mapping[str, str], key: str) -> str:
     if value is None or value == "":
         raise StreamEventDecodeError(f"missing required field {key}")
     return value
+
+
+def correlation_id_from_event(event: DomainEvent) -> str | None:
+    value = event["payload"].get("correlation_id")
+    return value if isinstance(value, str) and value else None
+
+
+def event_for_domain_validation(event: DomainEvent) -> DomainEvent:
+    domain_payload: JsonObject = dict(event["payload"])
+    domain_payload.pop("correlation_id", None)
+
+    return {
+        "id": event["id"],
+        "aggregate_type": event["aggregate_type"],
+        "aggregate_id": event["aggregate_id"],
+        "event_type": event["event_type"],
+        "payload": domain_payload,
+        "created_at": event["created_at"],
+    }
 
 
 def invalid_event_payload(entry: StreamEntry, reason: str) -> JsonObject:

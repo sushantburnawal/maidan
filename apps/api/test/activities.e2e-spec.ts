@@ -12,6 +12,7 @@ import type {
   ActivityRecord,
   ActivityResponse,
   ActivitySlotRecord,
+  ActivityVibeResponse,
   CreateActivityInput,
   CreateSlotInput,
   FairnessComputation,
@@ -376,11 +377,21 @@ class FakeActivitiesRepository implements ActivitiesRepository {
 describe('Activities module', () => {
   let app: NestFastifyApplication;
   let activitiesRepository: FakeActivitiesRepository;
+  let fetchMock: jest.Mock<Promise<Response>, Parameters<typeof fetch>>;
 
   const hostProfileId = randomUUID();
   const hostToken = 'host-token';
+  const previousAiBaseUrl = process.env.AI_BASE_URL;
+  const previousAiInternalToken = process.env.AI_INTERNAL_TOKEN;
+  const originalFetch = global.fetch;
 
   beforeAll(async () => {
+    process.env.AI_BASE_URL = 'http://ai.test';
+    process.env.AI_INTERNAL_TOKEN = 'test-internal-token';
+
+    fetchMock = jest.fn<Promise<Response>, Parameters<typeof fetch>>();
+    global.fetch = fetchMock as typeof fetch;
+
     activitiesRepository = new FakeActivitiesRepository();
 
     const moduleRef = await Test.createTestingModule({
@@ -408,9 +419,13 @@ describe('Activities module', () => {
   beforeEach(() => {
     activitiesRepository.reset();
     activitiesRepository.addHost(hostProfileId);
+    fetchMock.mockReset();
   });
 
   afterAll(async () => {
+    global.fetch = originalFetch;
+    restoreEnv('AI_BASE_URL', previousAiBaseUrl);
+    restoreEnv('AI_INTERNAL_TOKEN', previousAiInternalToken);
     await app.close();
   });
 
@@ -515,6 +530,78 @@ describe('Activities module', () => {
     });
   });
 
+  it('proxies activity vibe without leaking phone numbers', async () => {
+    const activityId = randomUUID();
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          activity_id: activityId,
+          title: 'Nandi Hills sunrise trail ride',
+          pillar: 'move',
+          participant_count: 3,
+          people: [
+            {
+              display_name: 'Hemant Rao',
+              role: 'host',
+              phone: '+919900000001'
+            },
+            {
+              display_name: 'Nisha Pai',
+              role: 'attendee'
+            }
+          ],
+          shared_interests: [
+            {
+              tag: 'cycling',
+              count: 2
+            },
+            {
+              tag: 'trails',
+              count: 2
+            }
+          ],
+          phone_numbers: ['+919900000001'],
+          summary: "You'll meet Hemant Rao and Nisha Pai. Call +919900000001."
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        }
+      )
+    );
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/activities/${activityId}/vibe`
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    const vibe = response.json() as ActivityVibeResponse;
+    expect(vibe.shared_interests.map((interest) => interest.tag)).toEqual(['cycling', 'trails']);
+    expect(vibe.people).toEqual([
+      {
+        display_name: 'Hemant Rao',
+        role: 'host'
+      },
+      {
+        display_name: 'Nisha Pai',
+        role: 'attendee'
+      }
+    ]);
+    expect(response.body).not.toContain('+919900000001');
+    expect(response.body).not.toContain('phone');
+    expect(fetchMock).toHaveBeenCalledWith(
+      `http://ai.test/internal/activities/${activityId}/vibe`,
+      {
+        method: 'GET',
+        headers: {
+          authorization: 'Bearer test-internal-token'
+        }
+      }
+    );
+  });
+
   it('publishing inserts exactly one domain event for the activity', async () => {
     const createResponse = await app.inject({
       method: 'POST',
@@ -578,6 +665,14 @@ function activityPayload(overrides: { title: string; basePriceInr: number }): Re
     capacity: 12,
     media: []
   };
+}
+
+function restoreEnv(name: string, originalValue: string | undefined): void {
+  if (originalValue === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = originalValue;
 }
 
 function cloneActivity(activity: ActivityRecord): ActivityRecord {

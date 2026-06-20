@@ -3,11 +3,10 @@ POSTGRES_USER ?= postgres
 POSTGRES_DB ?= postgres
 PSQL ?= docker compose -f $(COMPOSE_FILE) exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB)
 
-.PHONY: up down migrate seed
+.PHONY: up down migrate seed smoke
 
 up:
-	docker compose -f $(COMPOSE_FILE) up --build
-
+	docker compose --env-file .env -f $(COMPOSE_FILE) up --build
 down:
 	docker compose -f $(COMPOSE_FILE) down
 
@@ -19,3 +18,7 @@ migrate:
 
 seed:
 	$(PSQL) -v ON_ERROR_STOP=1 < db/seed.sql
+
+smoke:
+	pnpm --filter @maidan/shared build
+	pnpm --filter @maidan/smoke smoke

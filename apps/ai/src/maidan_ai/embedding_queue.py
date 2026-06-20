@@ -12,6 +12,7 @@ from typing import Protocol, cast
 
 from maidan_ai.activity_embeddings import ActivityEmbeddingService
 from maidan_ai.domain_events import DomainEvent, JsonObject, JsonValue
+from maidan_ai.observability import correlation_context
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,10 @@ class ActivityEmbeddingQueueProcessor:
 
     async def process(self, job: BullMqJob) -> JsonObject:
         event = domain_event_from_job(job)
+        with correlation_context(correlation_id_from_event(event)):
+            return await self._process_event(event)
+
+    async def _process_event(self, event: DomainEvent) -> JsonObject:
         if event["event_type"] not in SUPPORTED_EMBEDDING_EVENTS:
             return {
                 "handler": "embedding_queue",
@@ -297,6 +302,11 @@ def required_text(data: Mapping[str, JsonValue], key: str) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError(f"Embedding job data is missing {key}")
     return value
+
+
+def correlation_id_from_event(event: DomainEvent) -> str | None:
+    value = event["payload"].get("correlation_id")
+    return value if isinstance(value, str) and value else None
 
 
 def redis_hash_to_map(value: object) -> dict[str, str]:

@@ -17,6 +17,7 @@ import type {
   ActivityDetailResponse,
   ActivityResponse,
   ActivitySlotRecord,
+  ActivityVibeResponse,
   NearbyActivityResponse
 } from './activities.types';
 import { ActivitiesService } from './activities.service';
@@ -41,6 +42,13 @@ export class ActivitiesController {
   @Get('nearby')
   async findNearby(@Query() query: NearbyActivitiesQueryDto): Promise<NearbyActivityResponse[]> {
     return this.activitiesService.findNearby(query);
+  }
+
+  @Get(':id/vibe')
+  async getActivityVibe(
+    @Param('id', ParseUUIDPipe) activityId: string
+  ): Promise<ActivityVibeResponse> {
+    return this.activitiesService.getActivityVibe(activityId);
   }
 
   @Get(':id')

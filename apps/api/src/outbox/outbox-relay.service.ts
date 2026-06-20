@@ -48,11 +48,13 @@ export class OutboxRelayService {
 
       for (const route of routes) {
         const queue = this.redisInfrastructure.getQueue<DomainEventJobData>(route.queueName);
+        const correlationId = payloadCorrelationId(event.payload);
 
         await queue.add(
           event.event_type,
           {
             ...event,
+            ...(correlationId === undefined ? {} : { correlation_id: correlationId }),
             stream_entry_id: streamEntryId
           },
           {
@@ -83,6 +85,7 @@ export class OutboxRelayService {
   }
 
   private async publishToStream(event: DomainEventEnvelope): Promise<string> {
+    const correlationId = payloadCorrelationId(event.payload);
     const streamEntryId = await this.redis.xadd(
       STREAM_DOMAIN_EVENTS,
       '*',
@@ -97,7 +100,9 @@ export class OutboxRelayService {
       'payload',
       JSON.stringify(event.payload),
       'created_at',
-      event.created_at
+      event.created_at,
+      'correlation_id',
+      correlationId ?? ''
     );
 
     if (streamEntryId === null) {
@@ -158,6 +163,12 @@ function getDerivedJobId(event: DomainEventEnvelope, queueName: DerivedQueueName
   const safeQueueName = queueName.replace(/[^a-zA-Z0-9_-]/g, '-');
 
   return `domain-event-${event.id}-${safeQueueName}`;
+}
+
+function payloadCorrelationId(payload: Record<string, unknown>): string | undefined {
+  const value = payload.correlation_id;
+
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
 function getPositiveIntegerEnv(name: string, fallback: number): number {

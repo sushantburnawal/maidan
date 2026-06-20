@@ -7,6 +7,7 @@ import {
 import { Pool, type PoolClient } from 'pg';
 
 import type { BookingConfirmedPayload, MessageCreatedPayload } from '@maidan/shared';
+import { withCurrentCorrelation } from '../observability/request-context';
 import type {
   BookingChatRecord,
   CreateMessageInput,
@@ -316,7 +317,7 @@ async function insertMessageCreatedEvent(
       insert into domain_events (aggregate_type, aggregate_id, event_type, payload)
       values ('message', $1, 'message.created', $2::jsonb)
     `,
-    [message.id, JSON.stringify(payload)]
+    [message.id, JSON.stringify(withCurrentCorrelation(payload))]
   );
 }
 

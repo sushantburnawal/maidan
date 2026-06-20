@@ -15,6 +15,7 @@ import { AuthService } from '../auth/auth.service';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import type { DomainEventEnvelope } from '../outbox/outbox.types';
 import { RedisInfrastructure } from '../redis/redis.infrastructure';
+import { parseDomainPayload } from './domain-payload.parser';
 import { realtimeUserPresenceKey } from './realtime.constants';
 import { RealtimeService } from './realtime.service';
 import type { BookingChatRecord, MessageRecord } from './realtime.types';
@@ -155,7 +156,7 @@ export class RealtimeGateway implements OnApplicationBootstrap, OnModuleDestroy 
     const io = this.getServer();
 
     if (event.event_type === 'booking.confirmed') {
-      const parsed = bookingConfirmedPayloadSchema.safeParse(event.payload);
+      const parsed = parseDomainPayload(bookingConfirmedPayloadSchema, event.payload);
 
       if (parsed.success) {
         const bookingChat = await this.realtimeService.ensureBookingChat(parsed.data);
@@ -178,6 +179,10 @@ export class RealtimeGateway implements OnApplicationBootstrap, OnModuleDestroy 
     if (event.event_type === 'post.created') {
       io.emit('feed:new', event.payload);
     }
+  }
+
+  getConnectionCount(): number {
+    return this.server?.sockets.sockets.size ?? 0;
   }
 
   private configureRedisAdapter(

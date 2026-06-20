@@ -1,0 +1,130 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  api:
+    name: API
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: supabase/postgres:15.1.1.78
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 54322:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres -h localhost"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Apply database migrations
+        run: |
+          for file in db/migrations/*.sql; do
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$file"
+          done
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+
+      - name: Build shared package
+        run: pnpm --filter @maidan/shared build
+
+      - name: Typecheck API
+        run: pnpm --filter @maidan/api typecheck
+
+      - name: Lint API
+        run: pnpm --filter @maidan/api lint
+
+      - name: Test API
+        run: pnpm --filter @maidan/api test
+        env:
+          API_HEALTHCHECK_AI_DISABLED: "true"
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+          REDIS_URL: redis://127.0.0.1:6379
+          JWT_ACCESS_SECRET: test-access-secret
+          JWT_REFRESH_SECRET: test-refresh-secret
+
+      - name: Build API
+        run: pnpm --filter @maidan/api build
+
+  ai:
+    name: AI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        working-directory: apps/ai
+        run: uv sync --locked
+
+      - name: Typecheck AI
+        working-directory: apps/ai
+        run: uv run mypy src tests
+
+      - name: Lint AI
+        working-directory: apps/ai
+        run: uv run ruff check .
+
+      - name: Test AI
+        working-directory: apps/ai
+        run: uv run pytest
+
+      - name: Build AI
+        working-directory: apps/ai
+        run: uv run python -m compileall src
+
+  docker:
+    name: Docker Images
+    runs-on: ubuntu-latest
+    needs:
+      - api
+      - ai
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build API image
+        run: docker build -f infra/api.Dockerfile -t maidan-api:ci .
+
+      - name: Build AI image
+        run: docker build -f infra/ai.Dockerfile -t maidan-ai:ci .

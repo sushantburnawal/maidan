@@ -5,9 +5,12 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 
 import { AppModule } from './app.module';
+import { JsonLogger } from './observability/json-logger';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter());
+  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), {
+    logger: new JsonLogger()
+  });
   app.useGlobalPipes(
     new ValidationPipe({
       forbidNonWhitelisted: true,

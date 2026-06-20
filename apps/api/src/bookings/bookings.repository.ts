@@ -13,6 +13,7 @@ import type {
   BookingStatus,
   SlotStatus
 } from '@maidan/shared';
+import { withCurrentCorrelation } from '../observability/request-context';
 import { CANCELLABLE_BOOKING_STATUSES } from './bookings.constants';
 import type { BookingRecord, BookingsRepository, CreateBookingInput } from './bookings.types';
 
@@ -353,7 +354,7 @@ async function insertDomainEvent(
       insert into domain_events (aggregate_type, aggregate_id, event_type, payload)
       values ('booking', $1, $2, $3::jsonb)
     `,
-    [aggregateId, eventType, JSON.stringify(payload)]
+    [aggregateId, eventType, JSON.stringify(withCurrentCorrelation(payload))]
   );
 }
 

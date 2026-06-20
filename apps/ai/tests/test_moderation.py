@@ -126,7 +126,9 @@ def test_parse_failures_retry_then_dead_letter_without_allowing() -> None:
         redis = FakeBullMqRedis(prefix="maidan", queue_name=QUEUE_MODERATION)
         store = FakeModerationStore()
         store.add_message(MESSAGE_ID, "Ordinary content should not be allowed on parse failure.")
-        client = FakeCheapModerationClient(["not-json", "still not json"])
+        client = FakeCheapModerationClient(
+            ["not-json", "still not json", "bad again", "still bad"]
+        )
         job_id = "domain-event-3-maidan-moderation"
         redis.add_job(
             job_id,
@@ -157,6 +159,44 @@ def test_parse_failures_retry_then_dead_letter_without_allowing() -> None:
         assert store.ai_jobs[(MODERATION_DECISION_JOB_KIND, f"message:{MESSAGE_ID}")][
             "status"
         ] == "dead_letter"
+
+    asyncio.run(run())
+
+
+def test_moderation_repairs_invalid_json_before_applying() -> None:
+    async def run() -> None:
+        redis = FakeBullMqRedis(prefix="maidan", queue_name=QUEUE_MODERATION)
+        store = FakeModerationStore()
+        store.add_message(MESSAGE_ID, "See you at the trailhead.")
+        client = FakeCheapModerationClient(
+            [
+                "not-json",
+                json.dumps(
+                    {
+                        "allow": True,
+                        "categories": [],
+                        "severity": 0,
+                        "reason": "Benign ride coordination.",
+                    }
+                ),
+            ]
+        )
+        redis.add_job(
+            "domain-event-4-maidan-moderation",
+            "message.created",
+            message_created_job_data(event_id=4, message_id=MESSAGE_ID),
+            {"attempts": 1},
+        )
+        consumer = build_consumer(redis, store, client)
+
+        processed = await consumer.process_once()
+
+        assert processed == 1
+        assert len(client.calls) == 2
+        assert "failed JSON validation" in str(client.calls[1]["prompt"])
+        record = store.records[f"message:{MESSAGE_ID}"]
+        assert record.moderation_status == "ok"
+        assert record.is_hidden is False
 
     asyncio.run(run())
 

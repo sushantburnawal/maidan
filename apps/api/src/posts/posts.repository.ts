@@ -7,6 +7,7 @@ import {
 import { Pool, type PoolClient } from 'pg';
 
 import type { ActivityPillar, JsonValue, PostCreatedPayload } from '@maidan/shared';
+import { withCurrentCorrelation } from '../observability/request-context';
 import type {
   CompactActivityCard,
   CompactActivitySlot,
@@ -243,7 +244,7 @@ async function insertPostCreatedEvent(client: PoolClient, post: PostRecord): Pro
       insert into domain_events (aggregate_type, aggregate_id, event_type, payload)
       values ('post', $1, 'post.created', $2::jsonb)
     `,
-    [post.id, JSON.stringify(payload)]
+    [post.id, JSON.stringify(withCurrentCorrelation(payload))]
   );
 }
 

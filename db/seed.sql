@@ -390,7 +390,7 @@ insert into seed_bookings (
   status, created_days_ago
 ) values
   ('booking-nandi-nisha', 'nandi-hills-sunrise-trail-ride', 1, 'nisha', 2, 2998, 'confirmed', 3),
-  ('booking-nandi-vikram', 'nandi-hills-sunrise-trail-ride', 1, 'vikram', 1, 1499, 'pending', 1),
+  ('booking-nandi-vikram', 'nandi-hills-sunrise-trail-ride', 1, 'vikram', 1, 1499, 'confirmed', 1),
   ('booking-cubbon-run-priya', 'cubbon-park-morning-run', 1, 'priya', 1, 299, 'confirmed', 4),
   ('booking-pottery-sanjay', 'koramangala-pottery-wheel-intro', 2, 'sanjay', 2, 2400, 'cancelled', 2),
   ('booking-sound-dev', 'indiranagar-sound-bath', 1, 'dev', 1, 900, 'confirmed', 2),
@@ -436,7 +436,7 @@ insert into seed_payments (
   platform_fee_inr, host_payout_inr, status
 ) values
   ('payment-nandi-nisha', 'booking-nandi-nisha', 'MAIDAN-SEED-B001', 'TXN-SEED-B001', 2998, 450, 2548, 'success'),
-  ('payment-nandi-vikram', 'booking-nandi-vikram', 'MAIDAN-SEED-B002', null, 1499, 225, 1274, 'initiated'),
+  ('payment-nandi-vikram', 'booking-nandi-vikram', 'MAIDAN-SEED-B002', 'TXN-SEED-B002', 1499, 225, 1274, 'success'),
   ('payment-cubbon-run-priya', 'booking-cubbon-run-priya', 'MAIDAN-SEED-B003', 'TXN-SEED-B003', 299, 45, 254, 'success'),
   ('payment-pottery-sanjay', 'booking-pottery-sanjay', 'MAIDAN-SEED-B004', 'TXN-SEED-B004', 2400, 360, 2040, 'failed'),
   ('payment-sound-dev', 'booking-sound-dev', 'MAIDAN-SEED-B005', 'TXN-SEED-B005', 900, 135, 765, 'success'),

@@ -18,6 +18,6 @@ import { PostgresOutboxRelayRepository } from './outbox.repository';
       useClass: PostgresOutboxRelayRepository
     }
   ],
-  exports: [OutboxRelayService]
+  exports: [OutboxRelayService, OUTBOX_RELAY_REPOSITORY]
 })
 export class OutboxModule {}

@@ -7,6 +7,14 @@ const BULLMQ_QUEUE_NAMES = [QUEUE_EMBEDDINGS, QUEUE_MODERATION, QUEUE_NOTIFICATI
 
 type BullMqQueueName = (typeof BULLMQ_QUEUE_NAMES)[number];
 
+export interface QueueDepthMetric {
+  active: number;
+  delayed: number;
+  failed: number;
+  paused: number;
+  waiting: number;
+}
+
 @Injectable()
 export class RedisInfrastructure implements OnModuleDestroy {
   private readonly logger = new Logger(RedisInfrastructure.name);
@@ -63,6 +71,28 @@ export class RedisInfrastructure implements OnModuleDestroy {
     });
 
     return worker;
+  }
+
+  async getQueueDepths(): Promise<Record<BullMqQueueName, QueueDepthMetric>> {
+    const entries = await Promise.all(
+      BULLMQ_QUEUE_NAMES.map(async (queueName) => {
+        const queue = this.getQueue(queueName);
+        const counts = await queue.getJobCounts('active', 'delayed', 'failed', 'paused', 'waiting');
+
+        return [
+          queueName,
+          {
+            active: counts.active ?? 0,
+            delayed: counts.delayed ?? 0,
+            failed: counts.failed ?? 0,
+            paused: counts.paused ?? 0,
+            waiting: counts.waiting ?? 0
+          }
+        ] as const;
+      })
+    );
+
+    return Object.fromEntries(entries) as Record<BullMqQueueName, QueueDepthMetric>;
   }
 
   async onModuleDestroy(): Promise<void> {

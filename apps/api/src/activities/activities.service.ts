@@ -12,6 +12,7 @@ import type {
   ActivityDetailResponse,
   ActivityResponse,
   ActivitySlotRecord,
+  ActivityVibeResponse,
   CreateActivityInput,
   CreateSlotInput,
   NearbyActivitiesQuery,
@@ -19,6 +20,7 @@ import type {
   UpdateActivityInput,
   UpdateSlotInput
 } from './activities.types';
+import { ActivitiesVibeProxy } from './activities-vibe.proxy';
 import type { CreateActivityDto } from './dto/create-activity.dto';
 import type { NearbyActivitiesQueryDto } from './dto/nearby-activities-query.dto';
 import type { CreateSlotDto, UpdateSlotDto } from './dto/slot.dto';
@@ -46,7 +48,8 @@ const UPDATE_SLOT_FIELDS: ReadonlyArray<keyof UpdateSlotInput> = [
 @Injectable()
 export class ActivitiesService {
   constructor(
-    @Inject(ACTIVITIES_REPOSITORY) private readonly repository: ActivitiesRepository
+    @Inject(ACTIVITIES_REPOSITORY) private readonly repository: ActivitiesRepository,
+    private readonly vibeProxy: ActivitiesVibeProxy
   ) {}
 
   async createActivity(hostId: string, dto: CreateActivityDto): Promise<ActivityResponse> {
@@ -162,6 +165,10 @@ export class ActivitiesService {
     }
 
     return activity;
+  }
+
+  async getActivityVibe(activityId: string): Promise<ActivityVibeResponse> {
+    return this.vibeProxy.getActivityVibe(activityId);
   }
 }
 

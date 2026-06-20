@@ -30,6 +30,7 @@ import type {
   UpdateActivityInput,
   UpdateSlotInput
 } from './activities.types';
+import { withCurrentCorrelation } from '../observability/request-context';
 
 interface ActivityRow {
   id: string;
@@ -987,7 +988,7 @@ async function insertDomainEvent(
       insert into domain_events (aggregate_type, aggregate_id, event_type, payload)
       values ('activity', $1, $2, $3::jsonb)
     `,
-    [aggregateId, eventType, JSON.stringify(payload)]
+    [aggregateId, eventType, JSON.stringify(withCurrentCorrelation(payload))]
   );
 }
 

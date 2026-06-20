@@ -62,6 +62,26 @@ export type ActivityDetailResponse = ActivityResponse & {
   upcoming_open_slots: ActivitySlotRecord[];
 };
 
+export interface ActivityVibePerson {
+  display_name: string;
+  role: 'host' | 'attendee';
+}
+
+export interface ActivityVibeInterest {
+  tag: string;
+  count: number;
+}
+
+export interface ActivityVibeResponse {
+  activity_id: string;
+  title: string;
+  pillar: ActivityPillar;
+  participant_count: number;
+  people: ActivityVibePerson[];
+  shared_interests: ActivityVibeInterest[];
+  summary: string;
+}
+
 export interface CreateActivityInput {
   title: string;
   description: string;

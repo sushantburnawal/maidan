@@ -4,6 +4,7 @@ from typing import Protocol
 
 from maidan_ai.activity_embeddings import ActivityEmbeddingService
 from maidan_ai.domain_events import DomainEvent, JsonObject
+from maidan_ai.matchmaking import MatchmakingService
 
 DOMAIN_EVENT_TYPES = (
     "activity.published",
@@ -47,8 +48,26 @@ class ActivityEmbeddingEventHandler:
         }
 
 
+class MatchmakingEventHandler:
+    def __init__(self, service: MatchmakingService) -> None:
+        self._service = service
+
+    async def handle(self, event: DomainEvent) -> JsonObject:
+        activity_id = event["payload"].get("activity_id")
+        if not isinstance(activity_id, str) or not activity_id:
+            raise ValueError("Booking event payload is missing activity_id")
+
+        result = await self._service.compute_for_activity(activity_id)
+        return {
+            "handler": "matchmaking",
+            "event_type": event["event_type"],
+            **result.to_json(),
+        }
+
+
 def build_default_handlers(
     activity_embedding_service: ActivityEmbeddingService | None = None,
+    matchmaking_service: MatchmakingService | None = None,
 ) -> dict[str, DomainEventHandler]:
     noop = NoopDomainEventHandler()
     handlers: dict[str, DomainEventHandler] = {
@@ -59,5 +78,8 @@ def build_default_handlers(
         embedding_handler = ActivityEmbeddingEventHandler(activity_embedding_service)
         handlers["activity.published"] = embedding_handler
         handlers["activity.updated"] = embedding_handler
+
+    if matchmaking_service is not None:
+        handlers["booking.confirmed"] = MatchmakingEventHandler(matchmaking_service)
 
     return handlers

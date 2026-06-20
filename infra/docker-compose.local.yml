@@ -43,8 +43,13 @@ services:
       COMMIT_SHA: ${COMMIT_SHA:-local}
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-postgres}
       REDIS_URL: redis://redis:6379
+      AI_BASE_URL: http://ai:8000
+      AI_INTERNAL_TOKEN: ${AI_INTERNAL_TOKEN:-replace-me-internal-token}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-local-access-secret}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-local-refresh-secret}
+      PHONEPE_WEBHOOK_USERNAME: ${PHONEPE_WEBHOOK_USERNAME}
+      PHONEPE_WEBHOOK_PASSWORD: ${PHONEPE_WEBHOOK_PASSWORD}
+      PHONEPE_WEBHOOK_SECRET: ${PHONEPE_WEBHOOK_SECRET}
     ports:
       - "${API_PORT:-3000}:3000"
     depends_on:
@@ -73,6 +78,11 @@ services:
       COMMIT_SHA: ${COMMIT_SHA:-local}
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-postgres}
       REDIS_URL: redis://redis:6379
+      AI_PROVIDER: ${AI_PROVIDER:-openrouter}
+      AI_INTERNAL_TOKEN: ${AI_INTERNAL_TOKEN:-replace-me-internal-token}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL_CONVERSATIONAL: ${OPENROUTER_MODEL_CONVERSATIONAL:-google/gemma-4-31b-it:free}
+      OPENROUTER_MODEL_MODERATION: ${OPENROUTER_MODEL_MODERATION:-google/gemma-4-31b-it:free}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     ports:
       - "${AI_PORT:-8000}:8000"

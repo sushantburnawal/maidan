@@ -36,8 +36,7 @@ export class PostgresProfilesRepository implements ProfilesRepository, OnModuleD
             id,
             aud,
             role,
-            phone,
-            phone_confirmed_at,
+            email,
             confirmed_at,
             raw_app_meta_data,
             raw_user_meta_data,
@@ -50,14 +49,13 @@ export class PostgresProfilesRepository implements ProfilesRepository, OnModuleD
             'authenticated',
             $2,
             now(),
-            now(),
             '{"provider":"phone","providers":["phone"]}'::jsonb,
-            jsonb_build_object('display_name', $3, 'phone_first_login', true),
+            jsonb_build_object('display_name', $3::text),
             now(),
             now()
           )
         `,
-        [profileId, phone, displayName]
+        [profileId, authEmail(profileId), displayName]
       );
 
       const createdProfileResult = await client.query<ProfileRow>(
@@ -128,6 +126,10 @@ export class PostgresProfilesRepository implements ProfilesRepository, OnModuleD
 
 function defaultDisplayName(phone: string): string {
   return `Maidan Explorer ${phone.slice(-4)}`;
+}
+
+function authEmail(profileId: string): string {
+  return `${profileId}@phone.maidan.local`;
 }
 
 async function rollback(client: PoolClient): Promise<void> {

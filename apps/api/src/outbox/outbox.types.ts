@@ -8,6 +8,7 @@ export interface DomainEventEnvelope {
 }
 
 export interface DomainEventJobData extends DomainEventEnvelope {
+  correlation_id?: string;
   stream_entry_id: string;
 }
 

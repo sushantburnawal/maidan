@@ -1,0 +1,16 @@
+{
+  "name": "@maidan/smoke",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "smoke": "ts-node --project tsconfig.json src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@maidan/shared": "workspace:*",
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2"
+  }
+}

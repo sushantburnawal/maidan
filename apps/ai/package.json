@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "build": "uv run python -m compileall src",
+    "demand:run": "PYTHONPATH=src uv run python -m maidan_ai.demand_sensing",
     "embeddings:backfill": "PYTHONPATH=src uv run python -m maidan_ai.embeddings_backfill",
     "lint": "uv run ruff check .",
     "start": "uv run uvicorn maidan_ai.main:app --host 0.0.0.0 --port ${PORT:-8000}",

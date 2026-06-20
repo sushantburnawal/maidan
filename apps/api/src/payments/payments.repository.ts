@@ -19,6 +19,7 @@ import type {
   PaymentGatewayRefundResult,
   VerifiedPaymentWebhook
 } from './payment-gateway';
+import { withCurrentCorrelation } from '../observability/request-context';
 import { TERMINAL_PAYMENT_STATUSES } from './payments.constants';
 import { computePaymentSplit } from './payments.splits';
 import type {
@@ -541,7 +542,7 @@ async function insertDomainEvent(
       insert into domain_events (aggregate_type, aggregate_id, event_type, payload)
       values ($1, $2, $3, $4::jsonb)
     `,
-    [aggregateType, aggregateId, eventType, JSON.stringify(payload)]
+    [aggregateType, aggregateId, eventType, JSON.stringify(withCurrentCorrelation(payload))]
   );
 }
 
