@@ -50,4 +50,25 @@ describe('domainEventSchema', () => {
     expect(zodResult.success).toBe(false);
     expect(jsonSchemaResult).toBe(false);
   });
+
+  it('accepts follow.created in zod and JSON Schema', () => {
+    const followCreatedEvent: DomainEvent = {
+      id: 2,
+      aggregate_type: 'follow',
+      aggregate_id: '22222222-2222-4222-8222-222222222222',
+      event_type: 'follow.created',
+      payload: {
+        follower_id: '11111111-1111-4111-8111-111111111111',
+        followee_id: '22222222-2222-4222-8222-222222222222',
+        created_at: '2026-06-17T04:30:00.000Z'
+      },
+      created_at: '2026-06-17T04:30:00.000Z'
+    };
+
+    const zodResult = domainEventSchema.safeParse(followCreatedEvent);
+    const jsonSchemaResult = validateDomainEventJsonSchema(followCreatedEvent);
+
+    expect(zodResult.success).toBe(true);
+    expect(jsonSchemaResult).toBe(true);
+  });
 });

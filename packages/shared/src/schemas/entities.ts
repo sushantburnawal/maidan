@@ -144,6 +144,14 @@ export const postSchema = z
   })
   .strict();
 
+export const followSchema = z
+  .object({
+    follower_id: uuidSchema,
+    followee_id: uuidSchema,
+    created_at: timestampSchema
+  })
+  .strict();
+
 export const groupChatSchema = z
   .object({
     id: uuidSchema,
@@ -221,6 +229,7 @@ export type Booking = z.infer<typeof bookingSchema>;
 export type Payment = z.infer<typeof paymentSchema>;
 export type Review = z.infer<typeof reviewSchema>;
 export type Post = z.infer<typeof postSchema>;
+export type Follow = z.infer<typeof followSchema>;
 export type GroupChat = z.infer<typeof groupChatSchema>;
 export type ChatMember = z.infer<typeof chatMemberSchema>;
 export type Message = z.infer<typeof messageSchema>;

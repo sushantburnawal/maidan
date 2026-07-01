@@ -16,6 +16,7 @@ DOMAIN_EVENT_TYPES = (
     "payment.failed",
     "review.created",
     "post.created",
+    "follow.created",
     "message.created",
     "moderation.blocked",
 )

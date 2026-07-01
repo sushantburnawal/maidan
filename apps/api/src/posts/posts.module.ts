@@ -1,13 +1,14 @@
 import { Module } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module';
+import { FollowsModule } from '../follows/follows.module';
 import { POSTS_REPOSITORY } from './posts.constants';
 import { PostsController } from './posts.controller';
 import { PostgresPostsRepository } from './posts.repository';
 import { PostsService } from './posts.service';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, FollowsModule],
   controllers: [PostsController],
   providers: [
     PostsService,

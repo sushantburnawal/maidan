@@ -5,6 +5,7 @@ import { AuthController } from './auth.controller';
 import { AUTH_REDIS_STORE, PROFILES_REPOSITORY, SMS_PROVIDER } from './auth.constants';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { OptionalJwtAuthGuard } from './optional-jwt-auth.guard';
 import { PostgresProfilesRepository } from './profiles.repository';
 import { IoredisAuthStore } from './redis-auth-store';
 import { FakeSmsProvider, getMsg91AuthKey, Msg91SmsProvider } from './sms.provider';
@@ -27,8 +28,9 @@ import { FakeSmsProvider, getMsg91AuthKey, Msg91SmsProvider } from './sms.provid
       provide: SMS_PROVIDER,
       useFactory: () =>
         getMsg91AuthKey() === undefined ? new FakeSmsProvider() : new Msg91SmsProvider()
-    }
+    },
+    OptionalJwtAuthGuard
   ],
-  exports: [AuthService, JwtAuthGuard]
+  exports: [AuthService, JwtAuthGuard, OptionalJwtAuthGuard]
 })
 export class AuthModule {}

@@ -1,7 +1,7 @@
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsString, Max, Min, MinLength, ValidateIf } from 'class-validator';
+import { IsInt, IsString, Max, Min, MinLength, ValidateIf } from 'class-validator';
 
-export class PostsPageQueryDto {
+export class FollowsPageQueryDto {
   @ValidateIf((_, value: unknown) => value !== undefined)
   @IsString()
   @MinLength(1)
@@ -13,8 +13,4 @@ export class PostsPageQueryDto {
   @Min(1)
   @Max(50)
   limit?: number;
-
-  @ValidateIf((_, value: unknown) => value !== undefined)
-  @IsIn(['global', 'following'])
-  scope?: 'global' | 'following';
 }

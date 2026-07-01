@@ -73,6 +73,30 @@ def test_schema_invalid_event_goes_to_dead_letter_and_loop_continues() -> None:
     asyncio.run(run())
 
 
+def test_follow_created_event_is_acked_as_valid_noop() -> None:
+    async def run() -> None:
+        redis = FakeRedis()
+        jobs = FakeJobStore()
+        consumer = build_consumer(redis, jobs)
+        await consumer.start()
+
+        try:
+            event = valid_follow_created_event(event_id=104)
+            entry_id = await redis.xadd(STREAM_DOMAIN_EVENTS, stream_fields(event))
+
+            await wait_until(lambda: redis.ack_count(entry_id) == 1)
+            await asyncio.sleep(0.05)
+
+            assert redis.ack_count(entry_id) == 1
+            assert jobs.statuses[str(event["id"])] == "succeeded"
+            assert redis.stream_len(DEAD_LETTER_STREAM) == 0
+            assert not jobs.invalid_events
+        finally:
+            await consumer.stop()
+
+    asyncio.run(run())
+
+
 def build_consumer(redis: FakeRedis, jobs: FakeJobStore) -> RedisDomainEventConsumer:
     validator = DomainEventValidator.from_schema_path(default_events_schema_path())
     return RedisDomainEventConsumer(
@@ -111,6 +135,21 @@ def valid_activity_published_event(event_id: int) -> DomainEvent:
             "location": {"lat": 13.1986, "lng": 77.7066},
             "base_price_inr": 1200,
             "published_at": "2026-06-18T00:00:00.000Z",
+        },
+        "created_at": "2026-06-18T00:00:00.000Z",
+    }
+
+
+def valid_follow_created_event(event_id: int) -> DomainEvent:
+    return {
+        "id": event_id,
+        "aggregate_type": "follow",
+        "aggregate_id": "22222222-2222-4222-8222-222222222222",
+        "event_type": "follow.created",
+        "payload": {
+            "follower_id": "11111111-1111-4111-8111-111111111111",
+            "followee_id": "22222222-2222-4222-8222-222222222222",
+            "created_at": "2026-06-18T00:00:00.000Z",
         },
         "created_at": "2026-06-18T00:00:00.000Z",
     }

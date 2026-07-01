@@ -1,0 +1,1 @@
+export const FOLLOWS_REPOSITORY = Symbol('FOLLOWS_REPOSITORY');

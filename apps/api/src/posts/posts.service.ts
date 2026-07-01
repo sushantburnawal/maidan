@@ -1,6 +1,13 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException
+} from '@nestjs/common';
 import { Buffer } from 'node:buffer';
 
+import { FollowsService } from '../follows/follows.service';
 import { POSTS_REPOSITORY } from './posts.constants';
 import type { CreatePostDto } from './dto/create-post.dto';
 import type { PostsPageQueryDto } from './dto/posts-page-query.dto';
@@ -18,7 +25,10 @@ const DEFAULT_POSTS_LIMIT = 20;
 
 @Injectable()
 export class PostsService {
-  constructor(@Inject(POSTS_REPOSITORY) private readonly repository: PostsRepository) {}
+  constructor(
+    @Inject(POSTS_REPOSITORY) private readonly repository: PostsRepository,
+    private readonly followsService: FollowsService
+  ) {}
 
   async createPost(authorId: string, dto: CreatePostDto): Promise<PostRecord> {
     const post = await this.repository.createPost(authorId, toCreatePostInput(dto));
@@ -30,12 +40,16 @@ export class PostsService {
     return post;
   }
 
-  async findFeed(dto: PostsPageQueryDto): Promise<PaginatedPostsResponse> {
+  async findFeed(dto: PostsPageQueryDto, viewerId?: string): Promise<PaginatedPostsResponse> {
     const input = toPostsPageInput(dto);
-    const posts = await this.repository.findFeed({
+    const scopedInput = {
       ...input,
       limit: input.limit + 1
-    });
+    };
+    const posts =
+      dto.scope === 'following'
+        ? await this.findFollowingFeed(scopedInput, viewerId)
+        : await this.repository.findFeed(scopedInput);
 
     return toPaginatedPostsResponse(posts, input.limit);
   }
@@ -59,6 +73,19 @@ export class PostsService {
     if (!deleted) {
       throw new NotFoundException('Post not found');
     }
+  }
+
+  private async findFollowingFeed(
+    input: PostsPageInput,
+    viewerId: string | undefined
+  ): Promise<FeedPostRecord[]> {
+    if (viewerId === undefined) {
+      throw new UnauthorizedException('Bearer token required');
+    }
+
+    const followeeIds = await this.followsService.findFolloweeIds(viewerId);
+
+    return this.repository.findFollowingFeed(input, followeeIds);
   }
 }
 

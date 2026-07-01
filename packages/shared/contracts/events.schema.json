@@ -864,6 +864,63 @@
             },
             "aggregate_type": {
               "type": "string",
+              "const": "follow"
+            },
+            "event_type": {
+              "type": "string",
+              "const": "follow.created"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "follower_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "followee_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": [
+                "follower_id",
+                "followee_id",
+                "created_at"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "id",
+            "aggregate_id",
+            "created_at",
+            "aggregate_type",
+            "event_type",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "aggregate_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "aggregate_type": {
+              "type": "string",
               "const": "message"
             },
             "event_type": {

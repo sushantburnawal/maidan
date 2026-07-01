@@ -57,6 +57,7 @@ export interface PostsPageInput {
 export interface PostsRepository {
   createPost(authorId: string, input: CreatePostInput): Promise<PostRecord | undefined>;
   findFeed(input: PostsPageInput): Promise<FeedPostRecord[]>;
+  findFollowingFeed(input: PostsPageInput, authorIds: string[]): Promise<FeedPostRecord[]>;
   findProfilePosts(profileId: string, input: PostsPageInput): Promise<FeedPostRecord[]>;
   deletePost(postId: string, authorId: string): Promise<boolean>;
 }

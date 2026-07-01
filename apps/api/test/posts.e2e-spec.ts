@@ -6,6 +6,13 @@ import { randomUUID } from 'node:crypto';
 import type { ActivityPillar } from '@maidan/shared';
 import { AuthService } from '../src/auth/auth.service';
 import type { AuthenticatedUser } from '../src/auth/auth.types';
+import { FOLLOWS_REPOSITORY } from '../src/follows/follows.constants';
+import type {
+  FollowCounts,
+  FollowCreateResult,
+  FollowProfileSummaryRecord,
+  FollowsRepository
+} from '../src/follows/follows.types';
 import { POSTS_REPOSITORY } from '../src/posts/posts.constants';
 import { PostsModule } from '../src/posts/posts.module';
 import type {
@@ -152,8 +159,17 @@ class FakePostsRepository implements PostsRepository {
     return this.publicPosts(input);
   }
 
+  async findFollowingFeed(
+    input: PostsPageInput,
+    authorIds: string[]
+  ): Promise<FeedPostRecord[]> {
+    const authorIdSet = new Set(authorIds);
+
+    return this.publicPosts(input, (post) => authorIdSet.has(post.author_id));
+  }
+
   async findProfilePosts(profileId: string, input: PostsPageInput): Promise<FeedPostRecord[]> {
-    return this.publicPosts(input).filter((post) => post.author_id === profileId);
+    return this.publicPosts(input, (post) => post.author_id === profileId);
   }
 
   async deletePost(postId: string, authorId: string): Promise<boolean> {
@@ -168,8 +184,12 @@ class FakePostsRepository implements PostsRepository {
     return true;
   }
 
-  private publicPosts(input: PostsPageInput): FeedPostRecord[] {
+  private publicPosts(
+    input: PostsPageInput,
+    includePost: (post: PostRecord) => boolean = () => true
+  ): FeedPostRecord[] {
     return Array.from(this.posts.values())
+      .filter(includePost)
       .filter((post) => post.linked_activity_id === null || this.isPublishedActivity(post.linked_activity_id))
       .map((post) => this.toFeedPost(post))
       .sort(comparePostsDesc)
@@ -234,6 +254,39 @@ class FakePostsRepository implements PostsRepository {
   }
 }
 
+class EmptyFollowsRepository implements FollowsRepository {
+  async createFollow(): Promise<FollowCreateResult> {
+    return { status: 'followee_not_found' };
+  }
+
+  async deleteFollow(): Promise<void> {
+    return undefined;
+  }
+
+  async findFollowers(): Promise<FollowProfileSummaryRecord[]> {
+    return [];
+  }
+
+  async findFollowing(): Promise<FollowProfileSummaryRecord[]> {
+    return [];
+  }
+
+  async findFolloweeIds(): Promise<string[]> {
+    return [];
+  }
+
+  async getCounts(): Promise<FollowCounts> {
+    return {
+      follower_count: 0,
+      following_count: 0
+    };
+  }
+
+  async isFollowing(): Promise<boolean> {
+    return false;
+  }
+}
+
 describe('Posts module', () => {
   let app: NestFastifyApplication;
   let postsRepository: FakePostsRepository;
@@ -251,6 +304,8 @@ describe('Posts module', () => {
       .useValue(new FakeAuthService(new Map([[authorToken, authorProfileId]])))
       .overrideProvider(POSTS_REPOSITORY)
       .useValue(postsRepository)
+      .overrideProvider(FOLLOWS_REPOSITORY)
+      .useValue(new EmptyFollowsRepository())
       .compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());

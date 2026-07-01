@@ -1,13 +1,14 @@
 import { Module } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module';
+import { FollowsModule } from '../follows/follows.module';
 import { PROFILES_API_REPOSITORY } from './profiles.constants';
 import { ProfilesController } from './profiles.controller';
 import { PostgresProfilesApiRepository } from './profiles.repository';
 import { ProfilesService } from './profiles.service';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, FollowsModule],
   controllers: [ProfilesController],
   providers: [
     ProfilesService,

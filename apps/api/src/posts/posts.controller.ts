@@ -13,6 +13,7 @@ import {
 
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { CreatePostDto } from './dto/create-post.dto';
 import { PostsPageQueryDto } from './dto/posts-page-query.dto';
 import { PostsService } from './posts.service';
@@ -32,8 +33,12 @@ export class PostsController {
   }
 
   @Get('feed')
-  async findFeed(@Query() query: PostsPageQueryDto): Promise<PaginatedPostsResponse> {
-    return this.postsService.findFeed(query);
+  @UseGuards(OptionalJwtAuthGuard)
+  async findFeed(
+    @Query() query: PostsPageQueryDto,
+    @CurrentUser('profileId') profileId?: string
+  ): Promise<PaginatedPostsResponse> {
+    return this.postsService.findFeed(query, profileId);
   }
 
   @Get('profiles/:id/posts')

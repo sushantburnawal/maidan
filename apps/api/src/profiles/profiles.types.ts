@@ -20,6 +20,18 @@ export type PublicProfileRecord = Omit<
   'phone' | 'created_at' | 'updated_at'
 >;
 
+export interface FollowCountFields {
+  follower_count: number;
+  following_count: number;
+}
+
+export type PrivateProfileResponse = PrivateProfileRecord & FollowCountFields;
+
+export type PublicProfileResponse = PublicProfileRecord &
+  FollowCountFields & {
+    is_following?: boolean;
+  };
+
 export interface HostProfileRecord {
   id: string;
   profile_id: string;

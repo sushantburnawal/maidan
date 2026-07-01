@@ -21,4 +21,7 @@ seed:
 
 smoke:
 	pnpm --filter @maidan/shared build
+	pnpm --filter @maidan/shared test
+	pnpm --filter @maidan/api test
+	cd apps/ai && uv run pytest tests/test_event_consumer.py
 	pnpm --filter @maidan/smoke smoke

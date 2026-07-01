@@ -95,6 +95,37 @@ export class PostgresPostsRepository implements PostsRepository, OnModuleDestroy
     }
   }
 
+  async findFollowingFeed(
+    input: PostsPageInput,
+    authorIds: string[]
+  ): Promise<FeedPostRecord[]> {
+    if (authorIds.length === 0) {
+      return [];
+    }
+
+    try {
+      const result = await this.getPool().query<FeedPostRow>(
+        feedPostsSql(
+          `
+          where p.author_id = any($3::uuid[])
+            and (p.linked_activity_id is null or a.id is not null)
+            and p.is_hidden = false
+            and (
+              $1::timestamptz is null
+              or (p.created_at, p.id) < ($1::timestamptz, $2::uuid)
+            )
+        `,
+          4
+        ),
+        [input.cursor?.created_at ?? null, input.cursor?.id ?? null, authorIds, input.limit]
+      );
+
+      return result.rows.map(mapFeedPost);
+    } catch (error) {
+      throw toRepositoryError(error, 'Failed to read following feed');
+    }
+  }
+
   async findProfilePosts(profileId: string, input: PostsPageInput): Promise<FeedPostRecord[]> {
     try {
       const result = await this.getPool().query<FeedPostRow>(

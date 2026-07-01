@@ -183,6 +183,25 @@ export const createMessageDtoSchema = z
   })
   .strict();
 
+export const followProfileSummaryResponseSchema = z
+  .object({
+    id: uuidSchema,
+    display_name: z.string().min(1),
+    avatar_url: z.string().nullable(),
+    bio: z.string().nullable(),
+    interests: z.array(z.string()),
+    home_location: geoPointSchema.nullable(),
+    is_following: z.boolean().optional()
+  })
+  .strict();
+
+export const followsPageResponseSchema = z
+  .object({
+    items: z.array(followProfileSummaryResponseSchema),
+    next_cursor: z.string().nullable()
+  })
+  .strict();
+
 export type CreateProfileDto = z.infer<typeof createProfileDtoSchema>;
 export type UpdateProfileDto = z.infer<typeof updateProfileDtoSchema>;
 export type CreateHostProfileDto = z.infer<typeof createHostProfileDtoSchema>;
@@ -196,3 +215,5 @@ export type InitPaymentDto = z.infer<typeof initPaymentDtoSchema>;
 export type CreateReviewDto = z.infer<typeof createReviewDtoSchema>;
 export type CreatePostDto = z.infer<typeof createPostDtoSchema>;
 export type CreateMessageDto = z.infer<typeof createMessageDtoSchema>;
+export type FollowProfileSummaryResponse = z.infer<typeof followProfileSummaryResponseSchema>;
+export type FollowsPageResponse = z.infer<typeof followsPageResponseSchema>;

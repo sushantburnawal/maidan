@@ -4,6 +4,7 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ActivitiesModule } from './activities/activities.module';
 import { AuthModule } from './auth/auth.module';
 import { BookingsModule } from './bookings/bookings.module';
+import { FollowsModule } from './follows/follows.module';
 import { HealthController } from './health.controller';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ApiHealthService } from './observability/api-health.service';
@@ -26,6 +27,7 @@ import { SutradharModule } from './sutradhar/sutradhar.module';
     ActivitiesModule,
     BookingsModule,
     PaymentsModule,
+    FollowsModule,
     PostsModule,
     RealtimeModule,
     NotificationsModule,

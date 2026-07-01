@@ -12,12 +12,14 @@ import {
 
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ProfilesService } from './profiles.service';
 import type {
   HostProfileRecord,
   PrivateProfileRecord,
-  PublicProfileRecord
+  PrivateProfileResponse,
+  PublicProfileResponse
 } from './profiles.types';
 
 @Controller()
@@ -28,7 +30,7 @@ export class ProfilesController {
   @UseGuards(JwtAuthGuard)
   async getMe(
     @CurrentUser('profileId') profileId: string
-  ): Promise<PrivateProfileRecord> {
+  ): Promise<PrivateProfileResponse> {
     return this.profilesService.getMe(profileId);
   }
 
@@ -51,9 +53,11 @@ export class ProfilesController {
   }
 
   @Get('profiles/:id')
+  @UseGuards(OptionalJwtAuthGuard)
   async getPublicProfile(
-    @Param('id', ParseUUIDPipe) profileId: string
-  ): Promise<PublicProfileRecord> {
-    return this.profilesService.getPublicProfile(profileId);
+    @Param('id', ParseUUIDPipe) profileId: string,
+    @CurrentUser('profileId') viewerId?: string
+  ): Promise<PublicProfileResponse> {
+    return this.profilesService.getPublicProfile(profileId, viewerId);
   }
 }

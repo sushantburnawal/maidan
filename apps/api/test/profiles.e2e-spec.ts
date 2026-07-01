@@ -5,6 +5,13 @@ import { randomUUID } from 'node:crypto';
 
 import { AuthService } from '../src/auth/auth.service';
 import type { AuthenticatedUser } from '../src/auth/auth.types';
+import { FOLLOWS_REPOSITORY } from '../src/follows/follows.constants';
+import type {
+  FollowCounts,
+  FollowCreateResult,
+  FollowProfileSummaryRecord,
+  FollowsRepository
+} from '../src/follows/follows.types';
 import { PROFILES_API_REPOSITORY } from '../src/profiles/profiles.constants';
 import { ProfilesModule } from '../src/profiles/profiles.module';
 import type {
@@ -12,6 +19,7 @@ import type {
   PrivateProfileRecord,
   ProfilesApiRepository,
   PublicProfileRecord,
+  PublicProfileResponse,
   UpdateProfileInput
 } from '../src/profiles/profiles.types';
 
@@ -134,6 +142,39 @@ class FakeProfilesApiRepository implements ProfilesApiRepository {
   }
 }
 
+class EmptyFollowsRepository implements FollowsRepository {
+  async createFollow(): Promise<FollowCreateResult> {
+    return { status: 'followee_not_found' };
+  }
+
+  async deleteFollow(): Promise<void> {
+    return undefined;
+  }
+
+  async findFollowers(): Promise<FollowProfileSummaryRecord[]> {
+    return [];
+  }
+
+  async findFollowing(): Promise<FollowProfileSummaryRecord[]> {
+    return [];
+  }
+
+  async findFolloweeIds(): Promise<string[]> {
+    return [];
+  }
+
+  async getCounts(): Promise<FollowCounts> {
+    return {
+      follower_count: 0,
+      following_count: 0
+    };
+  }
+
+  async isFollowing(): Promise<boolean> {
+    return false;
+  }
+}
+
 describe('Profiles module', () => {
   let app: NestFastifyApplication;
   let profilesRepository: FakeProfilesApiRepository;
@@ -163,6 +204,8 @@ describe('Profiles module', () => {
       .useValue(new FakeAuthService(new Map([[token, profileId]])))
       .overrideProvider(PROFILES_API_REPOSITORY)
       .useValue(profilesRepository)
+      .overrideProvider(FOLLOWS_REPOSITORY)
+      .useValue(new EmptyFollowsRepository())
       .compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
@@ -234,7 +277,7 @@ describe('Profiles module', () => {
       method: 'GET',
       url: `/profiles/${profileId}`
     });
-    const publicProfile = publicResponse.json() as PublicProfileRecord;
+    const publicProfile = publicResponse.json() as PublicProfileResponse;
 
     expect(publicResponse.statusCode).toBe(200);
     expect(publicProfile).toEqual({
@@ -246,9 +289,12 @@ describe('Profiles module', () => {
       home_location: {
         lat: 12.9716,
         lng: 77.5946
-      }
+      },
+      follower_count: 0,
+      following_count: 0
     });
     expect(publicProfile).not.toHaveProperty('phone');
+    expect(publicProfile).not.toHaveProperty('is_following');
     expect(publicResponse.body).not.toContain(phone);
   });
 

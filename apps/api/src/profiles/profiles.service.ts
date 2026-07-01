@@ -1,12 +1,15 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 
+import { FollowsService } from '../follows/follows.service';
 import { PROFILES_API_REPOSITORY } from './profiles.constants';
 import type { UpdateProfileDto } from './dto/update-profile.dto';
 import type {
   HostProfileRecord,
   PrivateProfileRecord,
+  PrivateProfileResponse,
   ProfilesApiRepository,
   PublicProfileRecord,
+  PublicProfileResponse,
   UpdateProfileInput
 } from './profiles.types';
 
@@ -21,17 +24,18 @@ const UPDATE_PROFILE_FIELDS: ReadonlyArray<keyof UpdateProfileInput> = [
 @Injectable()
 export class ProfilesService {
   constructor(
-    @Inject(PROFILES_API_REPOSITORY) private readonly repository: ProfilesApiRepository
+    @Inject(PROFILES_API_REPOSITORY) private readonly repository: ProfilesApiRepository,
+    private readonly followsService: FollowsService
   ) {}
 
-  async getMe(profileId: string): Promise<PrivateProfileRecord> {
+  async getMe(profileId: string): Promise<PrivateProfileResponse> {
     const profile = await this.repository.getPrivateProfile(profileId);
 
     if (profile === undefined) {
       throw profileNotFound();
     }
 
-    return profile;
+    return this.withFollowCounts(profile);
   }
 
   async updateMe(profileId: string, dto: UpdateProfileDto): Promise<PrivateProfileRecord> {
@@ -50,14 +54,26 @@ export class ProfilesService {
     return profile;
   }
 
-  async getPublicProfile(profileId: string): Promise<PublicProfileRecord> {
+  async getPublicProfile(
+    profileId: string,
+    viewerId?: string
+  ): Promise<PublicProfileResponse> {
     const profile = await this.repository.getPublicProfile(profileId);
 
     if (profile === undefined) {
       throw profileNotFound();
     }
 
-    return profile;
+    const profileWithCounts = await this.withFollowCounts(profile);
+
+    if (viewerId === undefined) {
+      return profileWithCounts;
+    }
+
+    return {
+      ...profileWithCounts,
+      is_following: await this.followsService.isFollowing(viewerId, profileId)
+    };
   }
 
   async becomeHost(profileId: string): Promise<HostProfileRecord> {
@@ -68,6 +84,18 @@ export class ProfilesService {
     }
 
     return hostProfile;
+  }
+
+  private async withFollowCounts<T extends PublicProfileRecord | PrivateProfileRecord>(
+    profile: T
+  ): Promise<T & { follower_count: number; following_count: number }> {
+    const counts = await this.followsService.getCounts(profile.id);
+
+    return {
+      ...profile,
+      follower_count: counts.follower_count,
+      following_count: counts.following_count
+    };
   }
 }
 

@@ -150,6 +150,14 @@ export const postCreatedPayloadSchema = z
   })
   .strict();
 
+export const followCreatedPayloadSchema = z
+  .object({
+    follower_id: uuidSchema,
+    followee_id: uuidSchema,
+    created_at: timestampSchema
+  })
+  .strict();
+
 export const messageCreatedPayloadSchema = z
   .object({
     message_id: uuidSchema,
@@ -247,6 +255,14 @@ export const postCreatedEventSchema = domainEventEnvelopeSchema
   })
   .strict();
 
+export const followCreatedEventSchema = domainEventEnvelopeSchema
+  .extend({
+    aggregate_type: z.literal('follow'),
+    event_type: z.literal('follow.created'),
+    payload: followCreatedPayloadSchema
+  })
+  .strict();
+
 export const messageCreatedEventSchema = domainEventEnvelopeSchema
   .extend({
     aggregate_type: z.literal('message'),
@@ -273,6 +289,7 @@ export const domainEventSchema = z.discriminatedUnion('event_type', [
   paymentFailedEventSchema,
   reviewCreatedEventSchema,
   postCreatedEventSchema,
+  followCreatedEventSchema,
   messageCreatedEventSchema,
   moderationBlockedEventSchema
 ]);
@@ -287,6 +304,7 @@ export const domainEventTypeSchema = z.enum([
   'payment.failed',
   'review.created',
   'post.created',
+  'follow.created',
   'message.created',
   'moderation.blocked'
 ]);
@@ -300,6 +318,7 @@ export type PaymentSucceededPayload = z.infer<typeof paymentSucceededPayloadSche
 export type PaymentFailedPayload = z.infer<typeof paymentFailedPayloadSchema>;
 export type ReviewCreatedPayload = z.infer<typeof reviewCreatedPayloadSchema>;
 export type PostCreatedPayload = z.infer<typeof postCreatedPayloadSchema>;
+export type FollowCreatedPayload = z.infer<typeof followCreatedPayloadSchema>;
 export type MessageCreatedPayload = z.infer<typeof messageCreatedPayloadSchema>;
 export type ModerationTargetType = z.infer<typeof moderationTargetTypeSchema>;
 export type ModerationBlockedPayload = z.infer<typeof moderationBlockedPayloadSchema>;
