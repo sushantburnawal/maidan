@@ -8,19 +8,31 @@ export interface AuthTokens {
 const STORAGE_KEY = 'maidan.auth.tokens';
 
 let currentTokens: AuthTokens | null = readStoredTokens();
+const listeners = new Set<(tokens: AuthTokens | null) => void>();
 
 export function getAuthTokens(): AuthTokens | null {
   return currentTokens;
 }
 
+export function subscribeAuthTokens(listener: (tokens: AuthTokens | null) => void): () => void {
+  listeners.add(listener);
+  listener(currentTokens);
+
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
 export function setAuthTokens(tokens: AuthTokens): void {
   currentTokens = tokens;
   writeStoredTokens(tokens);
+  notifyListeners();
 }
 
 export function clearAuthTokens(): void {
   currentTokens = null;
   removeStoredTokens();
+  notifyListeners();
 }
 
 function readStoredTokens(): AuthTokens | null {
@@ -64,6 +76,12 @@ function removeStoredTokens(): void {
     window.localStorage.removeItem(STORAGE_KEY);
   } catch {
     // Ignore storage failures.
+  }
+}
+
+function notifyListeners(): void {
+  for (const listener of listeners) {
+    listener(currentTokens);
   }
 }
 

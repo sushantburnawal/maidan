@@ -1,9 +1,21 @@
-import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { BrowserRouter, Navigate, NavLink, Route, Routes } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactElement } from 'react';
+import {
+  BrowserRouter,
+  Navigate,
+  NavLink,
+  Route,
+  Routes,
+  useNavigate
+} from 'react-router-dom';
 import maplibregl, { type StyleSpecification } from 'maplibre-gl';
 
 import { apiClient, type ReadyResponse } from './lib/apiClient';
-import { getAuthTokens } from './lib/authTokens';
+import {
+  getAuthTokens,
+  setAuthTokens,
+  subscribeAuthTokens,
+  type AuthTokens
+} from './lib/authTokens';
 import { realtimeClient, type RealtimeStatus } from './lib/realtime';
 
 const osmStyle: StyleSpecification = {
@@ -36,16 +48,28 @@ const navItems = [
 export function App(): ReactElement {
   return (
     <BrowserRouter>
-      <AppShell />
+      <Routes>
+        <Route path="/onboarding" element={<OnboardingScreen />} />
+        <Route path="/*" element={<ProtectedAppShell />} />
+      </Routes>
     </BrowserRouter>
   );
 }
 
-function AppShell(): ReactElement {
+function ProtectedAppShell(): ReactElement {
+  const tokens = useAuthTokenState();
+
+  if (tokens === null) {
+    return <Navigate to="/onboarding" replace />;
+  }
+
+  return <AppShell hasTokens={tokens !== null} />;
+}
+
+function AppShell({ hasTokens }: { hasTokens: boolean }): ReactElement {
   const [ready, setReady] = useState<ReadyResponse | null>(null);
   const [readyError, setReadyError] = useState<string | null>(null);
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>(realtimeClient.getStatus());
-  const hasTokens = getAuthTokens() !== null;
 
   useEffect(() => {
     let cancelled = false;
@@ -111,6 +135,7 @@ function AppShell(): ReactElement {
             element={<Placeholder title="Activities" eyebrow="Hosting / Joined" />}
           />
           <Route path="/you" element={<Placeholder title="You" eyebrow="Profile and host mode" />} />
+          <Route path="*" element={<Navigate to="/map" replace />} />
         </Routes>
       </main>
       <BottomNav />
@@ -192,6 +217,125 @@ function MapHome({
       </button>
     </section>
   );
+}
+
+function OnboardingScreen(): ReactElement {
+  const navigate = useNavigate();
+  const tokens = useAuthTokenState();
+  const [phone, setPhone] = useState('+919900000101');
+  const [code, setCode] = useState('');
+  const [step, setStep] = useState<'phone' | 'otp'>('phone');
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (tokens !== null) {
+      navigate('/map', { replace: true });
+    }
+  }, [navigate, tokens]);
+
+  async function requestOtp(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      await apiClient.auth.requestOtp(phone);
+      setStep('otp');
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to request OTP');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function verifyOtp(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      const verifiedTokens = await apiClient.auth.verifyOtp(phone, code);
+      setAuthTokens(verifiedTokens);
+      navigate('/map', { replace: true });
+    } catch (verifyError) {
+      setError(verifyError instanceof Error ? verifyError.message : 'Unable to verify OTP');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <main className="onboarding-screen">
+      <section className="onboarding-card">
+        <p className="eyebrow">Maidan</p>
+        <h1>Step into your local circle</h1>
+        <p className="onboarding-copy">
+          Sign in with phone OTP. Local seed explorer: +919900000101.
+        </p>
+
+        {step === 'phone' ? (
+          <form className="auth-form" onSubmit={(event) => void requestOtp(event)}>
+            <label htmlFor="phone">Phone</label>
+            <input
+              autoComplete="tel"
+              id="phone"
+              inputMode="tel"
+              name="phone"
+              onChange={(event) => setPhone(event.target.value)}
+              required
+              type="tel"
+              value={phone}
+            />
+            <button className="primary-button" disabled={isSubmitting} type="submit">
+              {isSubmitting ? 'Sending...' : 'Send OTP'}
+            </button>
+          </form>
+        ) : (
+          <form className="auth-form" onSubmit={(event) => void verifyOtp(event)}>
+            <label htmlFor="otp">OTP</label>
+            <input
+              autoComplete="one-time-code"
+              id="otp"
+              inputMode="numeric"
+              maxLength={6}
+              name="otp"
+              onChange={(event) => setCode(event.target.value)}
+              pattern="[0-9]{6}"
+              required
+              type="text"
+              value={code}
+            />
+            <button className="primary-button" disabled={isSubmitting} type="submit">
+              {isSubmitting ? 'Verifying...' : 'Verify and enter'}
+            </button>
+            <button
+              className="text-button"
+              disabled={isSubmitting}
+              onClick={() => {
+                setCode('');
+                setStep('phone');
+                setError(null);
+              }}
+              type="button"
+            >
+              Change phone
+            </button>
+          </form>
+        )}
+
+        {error !== null ? <p className="form-error">{error}</p> : null}
+      </section>
+    </main>
+  );
+}
+
+function useAuthTokenState(): AuthTokens | null {
+  const [tokens, setTokens] = useState<AuthTokens | null>(() => getAuthTokens());
+
+  useEffect(() => subscribeAuthTokens(setTokens), []);
+
+  return tokens;
 }
 
 function Placeholder({ title, eyebrow }: { title: string; eyebrow: string }): ReactElement {
