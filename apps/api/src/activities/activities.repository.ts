@@ -25,6 +25,7 @@ import type {
   CreateActivityInput,
   CreateSlotInput,
   FairnessComputation,
+  HostedActivityResponse,
   NearbyActivitiesQuery,
   NearbyActivityResponse,
   UpdateActivityInput,
@@ -53,8 +54,7 @@ interface ActivityRow {
   fairness_median_inr?: number | string | null;
 }
 
-interface NearbyActivityRow extends ActivityRow {
-  distance_m: number | string | null;
+interface ActivityWithNextSlotRow extends ActivityRow {
   next_slot_id: string | null;
   next_slot_activity_id: string | null;
   next_slot_starts_at: Date | string | null;
@@ -64,6 +64,10 @@ interface NearbyActivityRow extends ActivityRow {
   next_slot_status: ActivitySlotRecord['status'] | null;
   next_slot_created_at: Date | string | null;
   next_slot_updated_at: Date | string | null;
+}
+
+interface NearbyActivityRow extends ActivityWithNextSlotRow {
+  distance_m: number | string | null;
 }
 
 interface ActivitySlotRow {
@@ -326,6 +330,37 @@ export class PostgresActivitiesRepository implements ActivitiesRepository, OnMod
       return result.rows.map(mapNearbyActivity);
     } catch (error) {
       throw toRepositoryError(error, 'Failed to find nearby activities');
+    }
+  }
+
+  async findByHost(hostId: string): Promise<HostedActivityResponse[]> {
+    try {
+      const result = await this.getPool().query<ActivityWithNextSlotRow>(
+        `
+          select
+            ${activityColumns('a')},
+            fairness.fairness_median_inr,
+            next_slot.id as next_slot_id,
+            next_slot.activity_id as next_slot_activity_id,
+            next_slot.starts_at as next_slot_starts_at,
+            next_slot.ends_at as next_slot_ends_at,
+            next_slot.capacity as next_slot_capacity,
+            next_slot.booked_count as next_slot_booked_count,
+            next_slot.status as next_slot_status,
+            next_slot.created_at as next_slot_created_at,
+            next_slot.updated_at as next_slot_updated_at
+          from activities a
+          left join lateral (${nextOpenSlotSql('a')}) next_slot on true
+          left join lateral (${fairnessMedianSql('a')}) fairness on true
+          where a.host_id = $1
+          order by a.created_at desc
+        `,
+        [hostId]
+      );
+
+      return result.rows.map(mapHostedActivity);
+    } catch (error) {
+      throw toRepositoryError(error, 'Failed to find hosted activities');
     }
   }
 
@@ -1000,6 +1035,13 @@ function mapNearbyActivity(row: NearbyActivityRow): NearbyActivityResponse {
   };
 }
 
+function mapHostedActivity(row: ActivityWithNextSlotRow): HostedActivityResponse {
+  return {
+    ...toActivityResponse(mapRequiredActivity(row), toNullableNumber(row.fairness_median_inr)),
+    next_open_slot: mapNextSlot(row)
+  };
+}
+
 function mapActivity(row: ActivityRow | undefined): ActivityRecord | undefined {
   if (row === undefined) {
     return undefined;
@@ -1050,7 +1092,7 @@ function mapSlot(row: ActivitySlotRow | undefined): ActivitySlotRecord | undefin
   };
 }
 
-function mapNextSlot(row: NearbyActivityRow): ActivitySlotRecord | null {
+function mapNextSlot(row: ActivityWithNextSlotRow): ActivitySlotRecord | null {
   if (row.next_slot_id === null || row.next_slot_activity_id === null) {
     return null;
   }

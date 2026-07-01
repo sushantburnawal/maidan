@@ -58,6 +58,10 @@ export type NearbyActivityResponse = ActivityResponse & {
   next_open_slot: ActivitySlotRecord | null;
 };
 
+export type HostedActivityResponse = ActivityResponse & {
+  next_open_slot: ActivitySlotRecord | null;
+};
+
 export type ActivityDetailResponse = ActivityResponse & {
   upcoming_open_slots: ActivitySlotRecord[];
 };
@@ -154,6 +158,7 @@ export interface ActivitiesRepository {
     ownerId: string,
     input: UpdateSlotInput
   ): Promise<ActivitySlotRecord | undefined>;
+  findByHost(hostId: string): Promise<HostedActivityResponse[]>;
   findNearby(query: NearbyActivitiesQuery): Promise<NearbyActivityResponse[]>;
   getActivityDetail(activityId: string): Promise<ActivityDetailResponse | undefined>;
 }

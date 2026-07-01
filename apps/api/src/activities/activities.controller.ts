@@ -15,6 +15,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type {
   ActivityDetailResponse,
+  HostedActivityResponse,
   ActivityResponse,
   ActivitySlotRecord,
   ActivityVibeResponse,
@@ -42,6 +43,14 @@ export class ActivitiesController {
   @Get('nearby')
   async findNearby(@Query() query: NearbyActivitiesQueryDto): Promise<NearbyActivityResponse[]> {
     return this.activitiesService.findNearby(query);
+  }
+
+  @Get('mine')
+  @UseGuards(JwtAuthGuard)
+  async findMine(
+    @CurrentUser('profileId') profileId: string
+  ): Promise<HostedActivityResponse[]> {
+    return this.activitiesService.findMine(profileId);
   }
 
   @Get(':id/vibe')

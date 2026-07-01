@@ -17,6 +17,7 @@ import type {
   CreateSlotInput,
   FairnessComputation,
   GeoPoint,
+  HostedActivityResponse,
   NearbyActivitiesQuery,
   NearbyActivityResponse,
   UpdateActivityInput,
@@ -246,6 +247,16 @@ class FakeActivitiesRepository implements ActivitiesRepository {
       .sort((left, right) => (left.distance_m ?? 0) - (right.distance_m ?? 0));
   }
 
+  async findByHost(hostId: string): Promise<HostedActivityResponse[]> {
+    return Array.from(this.activities.values())
+      .filter((activity) => activity.host_id === hostId)
+      .sort((left, right) => right.created_at.localeCompare(left.created_at))
+      .map((activity) => ({
+        ...this.toActivityResponse(activity, this.computeFairness(activity, activity.id).category_median_inr),
+        next_open_slot: this.nextOpenSlot(activity.id)
+      }));
+  }
+
   async getActivityDetail(activityId: string): Promise<ActivityDetailResponse | undefined> {
     const activity = this.activities.get(activityId);
 
@@ -380,7 +391,9 @@ describe('Activities module', () => {
   let fetchMock: jest.Mock<Promise<Response>, Parameters<typeof fetch>>;
 
   const hostProfileId = randomUUID();
+  const explorerProfileId = randomUUID();
   const hostToken = 'host-token';
+  const explorerToken = 'explorer-token';
   const previousAiBaseUrl = process.env.AI_BASE_URL;
   const previousAiInternalToken = process.env.AI_INTERNAL_TOKEN;
   const originalFetch = global.fetch;
@@ -398,7 +411,14 @@ describe('Activities module', () => {
       imports: [ActivitiesModule]
     })
       .overrideProvider(AuthService)
-      .useValue(new FakeAuthService(new Map([[hostToken, hostProfileId]])))
+      .useValue(
+        new FakeAuthService(
+          new Map([
+            [hostToken, hostProfileId],
+            [explorerToken, explorerProfileId]
+          ])
+        )
+      )
       .overrideProvider(ACTIVITIES_REPOSITORY)
       .useValue(activitiesRepository)
       .compile();
@@ -599,6 +619,123 @@ describe('Activities module', () => {
           authorization: 'Bearer test-internal-token'
         }
       }
+    );
+  });
+
+  it('returns the current host activities across statuses with next slots', async () => {
+    const draftResponse = await app.inject({
+      method: 'POST',
+      url: '/activities',
+      headers: {
+        authorization: `Bearer ${hostToken}`
+      },
+      payload: activityPayload({
+        title: "Hemant's Nandi Hills sunrise trail ride",
+        basePriceInr: 1499
+      })
+    });
+    const publishedResponse = await app.inject({
+      method: 'POST',
+      url: '/activities',
+      headers: {
+        authorization: `Bearer ${hostToken}`
+      },
+      payload: activityPayload({
+        title: "Hemant's Cubbon Park skills ride",
+        basePriceInr: 999
+      })
+    });
+
+    expect(draftResponse.statusCode).toBe(201);
+    expect(publishedResponse.statusCode).toBe(201);
+
+    const draftActivity = draftResponse.json() as ActivityResponse;
+    const publishedActivity = publishedResponse.json() as ActivityResponse;
+
+    const draftSlotResponse = await app.inject({
+      method: 'POST',
+      url: `/activities/${draftActivity.id}/slots`,
+      headers: {
+        authorization: `Bearer ${hostToken}`
+      },
+      payload: {
+        startsAt: '2030-01-05T00:30:00.000Z',
+        endsAt: '2030-01-05T04:00:00.000Z',
+        capacity: 12
+      }
+    });
+    const publishedSlotResponse = await app.inject({
+      method: 'POST',
+      url: `/activities/${publishedActivity.id}/slots`,
+      headers: {
+        authorization: `Bearer ${hostToken}`
+      },
+      payload: {
+        startsAt: '2030-01-06T00:30:00.000Z',
+        endsAt: '2030-01-06T04:00:00.000Z',
+        capacity: 10
+      }
+    });
+    const publishResponse = await app.inject({
+      method: 'POST',
+      url: `/activities/${publishedActivity.id}/publish`,
+      headers: {
+        authorization: `Bearer ${hostToken}`
+      }
+    });
+
+    expect(draftSlotResponse.statusCode).toBe(201);
+    expect(publishedSlotResponse.statusCode).toBe(201);
+    expect(publishResponse.statusCode).toBe(200);
+
+    const hemantResponse = await app.inject({
+      method: 'GET',
+      url: '/activities/mine',
+      headers: {
+        authorization: `Bearer ${hostToken}`
+      }
+    });
+    const snehaResponse = await app.inject({
+      method: 'GET',
+      url: '/activities/mine',
+      headers: {
+        authorization: `Bearer ${explorerToken}`
+      }
+    });
+
+    expect(hemantResponse.statusCode).toBe(200);
+    expect(snehaResponse.statusCode).toBe(200);
+
+    const hemantActivities = hemantResponse.json() as HostedActivityResponse[];
+    const snehaActivities = snehaResponse.json() as HostedActivityResponse[];
+
+    expect(hemantActivities).toHaveLength(2);
+    expect(snehaActivities).toHaveLength(0);
+    expect(hemantActivities.map((activity) => activity.title)).toEqual(
+      expect.arrayContaining([
+        "Hemant's Nandi Hills sunrise trail ride",
+        "Hemant's Cubbon Park skills ride"
+      ])
+    );
+    expect(hemantActivities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: draftActivity.id,
+          status: 'draft',
+          next_open_slot: expect.objectContaining({
+            activity_id: draftActivity.id,
+            status: 'open'
+          })
+        }),
+        expect.objectContaining({
+          id: publishedActivity.id,
+          status: 'published',
+          next_open_slot: expect.objectContaining({
+            activity_id: publishedActivity.id,
+            status: 'open'
+          })
+        })
+      ])
     );
   });
 

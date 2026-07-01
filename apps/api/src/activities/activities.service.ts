@@ -15,6 +15,7 @@ import type {
   ActivityVibeResponse,
   CreateActivityInput,
   CreateSlotInput,
+  HostedActivityResponse,
   NearbyActivitiesQuery,
   NearbyActivityResponse,
   UpdateActivityInput,
@@ -155,6 +156,10 @@ export class ActivitiesService {
 
   async findNearby(dto: NearbyActivitiesQueryDto): Promise<NearbyActivityResponse[]> {
     return this.repository.findNearby(toNearbyActivitiesQuery(dto));
+  }
+
+  async findMine(profileId: string): Promise<HostedActivityResponse[]> {
+    return this.repository.findByHost(profileId);
   }
 
   async getActivityDetail(activityId: string): Promise<ActivityDetailResponse> {
