@@ -41,6 +41,7 @@ services:
       HOST: 0.0.0.0
       PORT: 3000
       COMMIT_SHA: ${COMMIT_SHA:-local}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-postgres}
       REDIS_URL: redis://redis:6379
       AI_BASE_URL: http://ai:8000

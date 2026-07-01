@@ -18,6 +18,12 @@ async function bootstrap(): Promise<void> {
       whitelist: true
     })
   );
+  app.enableCors({
+    origin: getAllowedCorsOrigins(),
+    credentials: true,
+    allowedHeaders: ['Authorization', 'Content-Type'],
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS']
+  });
 
   const port = Number(process.env.PORT ?? 3000);
   const host = process.env.HOST ?? '0.0.0.0';
@@ -26,3 +32,16 @@ async function bootstrap(): Promise<void> {
 }
 
 void bootstrap();
+
+function getAllowedCorsOrigins(): string[] | boolean {
+  const rawOrigins = process.env.CORS_ORIGIN;
+
+  if (rawOrigins === undefined || rawOrigins.length === 0) {
+    return true;
+  }
+
+  return rawOrigins
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+}
