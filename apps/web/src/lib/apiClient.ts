@@ -158,7 +158,9 @@ export const apiClient = {
   },
   sutradhar: {
     chat: <TResponse>(body: { message: string }) =>
-      request<TResponse>('/sutradhar/chat', { method: 'POST', body })
+      request<TResponse>('/sutradhar/chat', { method: 'POST', body }),
+    chatStream: (body: { message: string; sessionId: string }) =>
+      streamRequest('/sutradhar/chat', { method: 'POST', body })
   }
 };
 
@@ -187,6 +189,29 @@ async function request<TResponse>(
   }
 
   return parseResponse(response) as Promise<TResponse>;
+}
+
+async function streamRequest(
+  path: string,
+  options: ApiRequestOptions = {},
+  hasRetried = false
+): Promise<Response> {
+  const response = await fetch(buildUrl(path, options.query), buildFetchInit(options));
+
+  if (response.status === 401 && options.auth !== false && !hasRetried) {
+    const refreshed = await refreshAccessToken();
+
+    if (refreshed) {
+      return streamRequest(path, options, true);
+    }
+  }
+
+  if (!response.ok) {
+    const payload = await parseResponse(response);
+    throw new ApiError(toApiErrorMessage(payload, response.status), response.status, payload);
+  }
+
+  return response;
 }
 
 function buildFetchInit(options: ApiRequestOptions): RequestInit {

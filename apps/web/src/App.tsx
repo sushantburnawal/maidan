@@ -160,10 +160,7 @@ function AppShell({ hasTokens }: { hasTokens: boolean }): ReactElement {
             element={<MapHome connectionLabel={connectionLabel} realtimeStatus={realtimeStatus} />}
           />
           <Route path="/feed" element={<FeedScreen />} />
-          <Route
-            path="/sutradhar"
-            element={<Placeholder title="Sutradhar" eyebrow="Grounded suggestions" />}
-          />
+          <Route path="/sutradhar" element={<SutradharScreen />} />
           <Route path="/activities" element={<ActivitiesScreen />} />
           <Route path="/activities/new" element={<CreateActivityScreen />} />
           <Route path="/activities/:activityId" element={<ActivityDetailScreen />} />
@@ -607,6 +604,179 @@ function FeedPostCard({
         </button>
       ) : null}
     </article>
+  );
+}
+
+interface SutradharMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  options: ActivityDetail[];
+}
+
+interface SutradharFinalEvent {
+  activity_ids?: string[];
+  demand_signal_id?: string | null;
+  type: 'final';
+}
+
+interface SutradharDeltaEvent {
+  text?: string;
+  type: 'delta';
+}
+
+type SutradharStreamEvent = SutradharDeltaEvent | SutradharFinalEvent;
+
+function SutradharScreen(): ReactElement {
+  const navigate = useNavigate();
+  const [sessionId] = useState(() => `web-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const [messages, setMessages] = useState<SutradharMessage[]>([
+    {
+      id: 'intro',
+      role: 'assistant',
+      text: 'Ask for a grounded Maidan option. I will only point to activities the backend returns.',
+      options: []
+    }
+  ]);
+  const [draft, setDraft] = useState('Find me the Nandi ride');
+  const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function sendMessage(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+
+    const message = draft.trim();
+
+    if (message.length === 0 || isSending) {
+      return;
+    }
+
+    const userMessage: SutradharMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      text: message,
+      options: []
+    };
+    const assistantMessageId = `assistant-${Date.now()}`;
+    const assistantMessage: SutradharMessage = {
+      id: assistantMessageId,
+      role: 'assistant',
+      text: '',
+      options: []
+    };
+
+    setMessages((currentMessages) => [...currentMessages, userMessage, assistantMessage]);
+    setDraft('');
+    setIsSending(true);
+    setError(null);
+
+    try {
+      const finalEvent = await streamSutradharReply(
+        message,
+        sessionId,
+        (text) => {
+          setMessages((currentMessages) =>
+            currentMessages.map((currentMessage) =>
+              currentMessage.id === assistantMessageId
+                ? { ...currentMessage, text: currentMessage.text + text }
+                : currentMessage
+            )
+          );
+        }
+      );
+      const optionIds = finalEvent.activity_ids ?? [];
+      const options = await loadSutradharOptions(optionIds);
+
+      setMessages((currentMessages) =>
+        currentMessages.map((currentMessage) =>
+          currentMessage.id === assistantMessageId
+            ? {
+                ...currentMessage,
+                options
+              }
+            : currentMessage
+        )
+      );
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : 'Sutradhar could not reply');
+      setMessages((currentMessages) =>
+        currentMessages.map((currentMessage) =>
+          currentMessage.id === assistantMessageId && currentMessage.text.length === 0
+            ? {
+                ...currentMessage,
+                text: 'Sutradhar is unavailable right now.'
+              }
+            : currentMessage
+        )
+      );
+    } finally {
+      setIsSending(false);
+    }
+  }
+
+  return (
+    <section className="sutradhar-screen">
+      <header className="sutradhar-header">
+        <div>
+          <p className="eyebrow">Sutradhar</p>
+          <h1>✦</h1>
+        </div>
+        <p className="muted-copy">Grounded suggestions only. Bookings stay in your hands.</p>
+      </header>
+
+      {error !== null ? <p className="inline-error">{error}</p> : null}
+
+      <div className="sutradhar-thread" aria-live="polite">
+        {messages.map((message) => (
+          <article
+            className={
+              message.role === 'user'
+                ? 'sutradhar-message sutradhar-message-user'
+                : 'sutradhar-message'
+            }
+            key={message.id}
+          >
+            <p className="eyebrow">{message.role === 'user' ? 'You' : 'Sutradhar'}</p>
+            <p>{message.text.length === 0 ? 'Thinking...' : message.text}</p>
+            {message.options.length > 0 ? (
+              <div className="sutradhar-options">
+                {message.options.map((activity) => (
+                  <button
+                    className={`sutradhar-option sutradhar-option-${activity.pillar}`}
+                    key={activity.id}
+                    onClick={() => navigate(`/activities/${activity.id}`)}
+                    type="button"
+                  >
+                    <span>{formatPillarLabel(activity.pillar)}</span>
+                    <strong>{activity.title}</strong>
+                    <small>
+                      {activity.upcoming_open_slots[0] === undefined
+                        ? 'Slots opening soon'
+                        : formatSlotDateRange(
+                            activity.upcoming_open_slots[0].starts_at,
+                            activity.upcoming_open_slots[0].ends_at
+                          )}
+                    </small>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </article>
+        ))}
+      </div>
+
+      <form className="sutradhar-compose" onSubmit={(event) => void sendMessage(event)}>
+        <label htmlFor="sutradhar-message">Ask Sutradhar</label>
+        <input
+          id="sutradhar-message"
+          value={draft}
+          onChange={(event) => setDraft(event.currentTarget.value)}
+        />
+        <button className="primary-button" disabled={isSending || draft.trim().length === 0} type="submit">
+          {isSending ? 'Asking...' : 'Ask'}
+        </button>
+      </form>
+    </section>
   );
 }
 
@@ -2783,6 +2953,109 @@ function parseInterests(value: string): string[] {
     .filter((interest) => interest.length > 0);
 }
 
+async function streamSutradharReply(
+  message: string,
+  sessionId: string,
+  onDelta: (text: string) => void
+): Promise<SutradharFinalEvent> {
+  const response = await apiClient.sutradhar.chatStream({ message, sessionId });
+
+  if (response.body === null) {
+    throw new Error('Sutradhar response was empty');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let finalEvent: SutradharFinalEvent | null = null;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+    buffer = consumeSutradharEvents(buffer, (event) => {
+      if (event.type === 'delta') {
+        onDelta(event.text ?? '');
+      } else {
+        finalEvent = event;
+      }
+    });
+  }
+
+  buffer += decoder.decode();
+  consumeSutradharEvents(`${buffer}\n\n`, (event) => {
+    if (event.type === 'delta') {
+      onDelta(event.text ?? '');
+    } else {
+      finalEvent = event;
+    }
+  });
+
+  if (finalEvent === null) {
+    return { type: 'final', activity_ids: [] };
+  }
+
+  return finalEvent;
+}
+
+function consumeSutradharEvents(
+  buffer: string,
+  onEvent: (event: SutradharStreamEvent) => void
+): string {
+  const normalized = buffer.replace(/\r\n/g, '\n');
+  const blocks = normalized.split('\n\n');
+  const remainder = blocks.pop() ?? '';
+
+  for (const block of blocks) {
+    const event = parseSutradharEvent(block);
+
+    if (event !== null) {
+      onEvent(event);
+    }
+  }
+
+  return remainder;
+}
+
+function parseSutradharEvent(block: string): SutradharStreamEvent | null {
+  const data = block
+    .split('\n')
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).trimStart())
+    .join('\n');
+
+  if (data.length === 0) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(data) as Partial<SutradharStreamEvent>;
+
+    if (parsed.type === 'delta' || parsed.type === 'final') {
+      return parsed as SutradharStreamEvent;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+async function loadSutradharOptions(activityIds: string[]): Promise<ActivityDetail[]> {
+  const uniqueActivityIds = Array.from(new Set(activityIds)).slice(0, 3);
+  const options = await Promise.all(
+    uniqueActivityIds.map((activityId) =>
+      apiClient.activities.detail<ActivityDetail>(activityId).catch((): ActivityDetail | null => null)
+    )
+  );
+
+  return options.filter((activity): activity is ActivityDetail => activity !== null);
+}
+
 function formatFeedDate(createdAt: string): string {
   const date = new Date(createdAt);
 
@@ -2998,15 +3271,6 @@ function useAuthTokenState(): AuthTokens | null {
   useEffect(() => subscribeAuthTokens(setTokens), []);
 
   return tokens;
-}
-
-function Placeholder({ title, eyebrow }: { title: string; eyebrow: string }): ReactElement {
-  return (
-    <section className="placeholder-screen">
-      <p className="eyebrow">{eyebrow}</p>
-      <h1>{title}</h1>
-    </section>
-  );
 }
 
 function BottomNav(): ReactElement {
