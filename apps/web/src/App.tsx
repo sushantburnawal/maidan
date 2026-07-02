@@ -23,11 +23,13 @@ import type { ActivityPillar, ActivitySlot, Booking, GeoPoint, GroupChat, Paymen
 
 import { apiClient, type ReadyResponse } from './lib/apiClient';
 import type {
+  ApiActivity,
   ActivityDetail,
   ActivityVibe,
   ChatMessage,
   CreateBookingResponse,
   FeedPost,
+  HostedActivity,
   InitPaymentResponse,
   JoinedChatState,
   NearbyActivity,
@@ -158,12 +160,11 @@ function AppShell({ hasTokens }: { hasTokens: boolean }): ReactElement {
             path="/sutradhar"
             element={<Placeholder title="Sutradhar" eyebrow="Grounded suggestions" />}
           />
-          <Route
-            path="/activities"
-            element={<Placeholder title="Activities" eyebrow="Hosting / Joined" />}
-          />
+          <Route path="/activities" element={<ActivitiesScreen />} />
+          <Route path="/activities/new" element={<CreateActivityScreen />} />
           <Route path="/activities/:activityId" element={<ActivityDetailScreen />} />
           <Route path="/activities/:activityId/join" element={<JoinFlowScreen />} />
+          <Route path="/activities/:activityId/manage" element={<ManageActivityScreen />} />
           <Route path="/chats/:chatId" element={<ChatRoomScreen />} />
           <Route path="/you" element={<Placeholder title="You" eyebrow="Profile and host mode" />} />
           <Route path="*" element={<Navigate to="/map" replace />} />
@@ -441,7 +442,12 @@ function MapHome({
           ))}
         </div>
       </aside>
-      <button className="create-fab" type="button" aria-label="Create a hangout">
+      <button
+        className="create-fab"
+        onClick={() => navigate('/activities/new')}
+        type="button"
+        aria-label="Create a hangout"
+      >
         +
       </button>
     </section>
@@ -596,6 +602,539 @@ function FeedPostCard({
         </button>
       ) : null}
     </article>
+  );
+}
+
+type ActivitiesTab = 'hosting' | 'joined';
+
+interface ActivityComposerState {
+  title: string;
+  description: string;
+  pillar: ActivityPillar;
+  category: string;
+  meetingPoint: string;
+  lat: string;
+  lng: string;
+  basePriceInr: string;
+  capacity: string;
+  startsAt: string;
+  endsAt: string;
+}
+
+function ActivitiesScreen(): ReactElement {
+  const navigate = useNavigate();
+  const [tab, setTab] = useState<ActivitiesTab>('hosting');
+  const [hostedActivities, setHostedActivities] = useState<HostedActivity[]>([]);
+  const [joinedBookings, setJoinedBookings] = useState<Booking[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadActivities = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const [hosting, joined] = await Promise.all([
+        apiClient.activities.mine<HostedActivity>(),
+        apiClient.bookings.mine<Booking>()
+      ]);
+
+      setHostedActivities(hosting);
+      setJoinedBookings(joined);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Unable to load activities');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadActivities();
+  }, [loadActivities]);
+
+  return (
+    <section className="activities-screen">
+      <header className="activities-header">
+        <div>
+          <p className="eyebrow">Activities</p>
+          <h1>{tab === 'hosting' ? 'Hosting' : 'Joined'}</h1>
+        </div>
+        <button className="primary-button" onClick={() => navigate('/activities/new')} type="button">
+          Create
+        </button>
+      </header>
+
+      <div className="feed-tabs activities-tabs" aria-label="Activities view">
+        <button
+          className={tab === 'hosting' ? 'feed-tab feed-tab-active' : 'feed-tab'}
+          onClick={() => setTab('hosting')}
+          type="button"
+        >
+          Hosting
+        </button>
+        <button
+          className={tab === 'joined' ? 'feed-tab feed-tab-active' : 'feed-tab'}
+          onClick={() => setTab('joined')}
+          type="button"
+        >
+          Joined
+        </button>
+      </div>
+
+      {error !== null ? <p className="inline-error">{error}</p> : null}
+      {isLoading ? <p className="feed-loading">Loading activities...</p> : null}
+
+      {tab === 'hosting' ? (
+        <div className="activity-list">
+          {!isLoading && hostedActivities.length === 0 ? (
+            <div className="feed-empty">
+              <p className="eyebrow">Hosting</p>
+              <h2>No hosted hangouts yet</h2>
+              <p className="muted-copy">Create a hangout when you have a clear plan and capacity.</p>
+            </div>
+          ) : null}
+          {hostedActivities.map((activity) => (
+            <article className="activity-list-card" key={activity.id}>
+              <div>
+                <p className="eyebrow">{activity.pillar} · {activity.status}</p>
+                <h2>{activity.title}</h2>
+                <p className="muted-copy">
+                  {activity.next_open_slot === null
+                    ? 'No open slots'
+                    : formatSlotDateRange(
+                        activity.next_open_slot.starts_at,
+                        activity.next_open_slot.ends_at
+                      )}
+                </p>
+              </div>
+              <div className="activity-list-actions">
+                <strong>{formatInr(activity.base_price_inr)}</strong>
+                <button
+                  className="secondary-button"
+                  onClick={() => navigate(`/activities/${activity.id}/manage`)}
+                  type="button"
+                >
+                  Manage
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="activity-list">
+          {!isLoading && joinedBookings.length === 0 ? (
+            <div className="feed-empty">
+              <p className="eyebrow">Joined</p>
+              <h2>No bookings yet</h2>
+              <p className="muted-copy">Your confirmed and pending activity bookings appear here.</p>
+            </div>
+          ) : null}
+          {joinedBookings.map((booking) => (
+            <article className="activity-list-card" key={booking.id}>
+              <div>
+                <p className="eyebrow">Booking · {booking.status}</p>
+                <h2>{formatInr(booking.amount_inr)}</h2>
+                <p className="muted-copy">Slot {shortId(booking.slot_id)}</p>
+              </div>
+              <span className="member-pill">{booking.headcount} spot</span>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CreateActivityScreen(): ReactElement {
+  const navigate = useNavigate();
+  const [form, setForm] = useState(() => defaultActivityComposerState());
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function updateForm(field: keyof ActivityComposerState, value: string): void {
+    setForm((currentForm) => ({
+      ...currentForm,
+      [field]: field === 'pillar' ? toActivityPillar(value) : value
+    }));
+  }
+
+  async function createActivity(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      const createdActivity = await apiClient.activities.create<ApiActivity>({
+        title: form.title.trim(),
+        description: form.description.trim(),
+        pillar: form.pillar,
+        category: form.category.trim(),
+        meetingPoint: form.meetingPoint.trim(),
+        location: {
+          lat: Number(form.lat),
+          lng: Number(form.lng)
+        },
+        basePriceInr: Number(form.basePriceInr),
+        capacity: Number(form.capacity),
+        media: []
+      });
+
+      await apiClient.activities.createSlot<ActivitySlot>(createdActivity.id, {
+        startsAt: datetimeLocalToIso(form.startsAt),
+        endsAt: datetimeLocalToIso(form.endsAt),
+        capacity: Number(form.capacity)
+      });
+      await apiClient.activities.publish<ApiActivity>(createdActivity.id);
+      navigate(`/activities/${createdActivity.id}/manage`, { replace: true });
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : 'Unable to create activity');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <section className="composer-screen">
+      <button className="text-button" onClick={() => navigate('/activities')} type="button">
+        Back
+      </button>
+      <form className="activity-composer" onSubmit={(event) => void createActivity(event)}>
+        <p className="eyebrow">Create a hangout</p>
+        <h1>Post the plan</h1>
+        <div className="maidan-way">
+          <p className="eyebrow">The Maidan way</p>
+          <p>Set a clear meeting point, hold only real capacity, and make the first message useful.</p>
+        </div>
+
+        <label>
+          Title
+          <input
+            required
+            value={form.title}
+            onChange={(event) => updateForm('title', event.currentTarget.value)}
+          />
+        </label>
+        <label>
+          Description
+          <textarea
+            required
+            rows={4}
+            value={form.description}
+            onChange={(event) => updateForm('description', event.currentTarget.value)}
+          />
+        </label>
+        <div className="composer-grid">
+          <label>
+            Pillar
+            <select
+              value={form.pillar}
+              onChange={(event) => updateForm('pillar', event.currentTarget.value)}
+            >
+              <option value="move">Move</option>
+              <option value="learn">Learn</option>
+              <option value="feel">Feel</option>
+            </select>
+          </label>
+          <label>
+            Category
+            <input
+              required
+              value={form.category}
+              onChange={(event) => updateForm('category', event.currentTarget.value)}
+            />
+          </label>
+        </div>
+        <label>
+          Meeting point
+          <input
+            required
+            value={form.meetingPoint}
+            onChange={(event) => updateForm('meetingPoint', event.currentTarget.value)}
+          />
+        </label>
+        <div className="composer-grid">
+          <label>
+            Latitude
+            <input
+              required
+              step="0.0001"
+              type="number"
+              value={form.lat}
+              onChange={(event) => updateForm('lat', event.currentTarget.value)}
+            />
+          </label>
+          <label>
+            Longitude
+            <input
+              required
+              step="0.0001"
+              type="number"
+              value={form.lng}
+              onChange={(event) => updateForm('lng', event.currentTarget.value)}
+            />
+          </label>
+        </div>
+        <div className="composer-grid">
+          <label>
+            Price
+            <input
+              min="0"
+              required
+              type="number"
+              value={form.basePriceInr}
+              onChange={(event) => updateForm('basePriceInr', event.currentTarget.value)}
+            />
+          </label>
+          <label>
+            Capacity
+            <input
+              min="1"
+              required
+              type="number"
+              value={form.capacity}
+              onChange={(event) => updateForm('capacity', event.currentTarget.value)}
+            />
+          </label>
+        </div>
+        <div className="composer-grid">
+          <label>
+            Starts
+            <input
+              required
+              type="datetime-local"
+              value={form.startsAt}
+              onChange={(event) => updateForm('startsAt', event.currentTarget.value)}
+            />
+          </label>
+          <label>
+            Ends
+            <input
+              required
+              type="datetime-local"
+              value={form.endsAt}
+              onChange={(event) => updateForm('endsAt', event.currentTarget.value)}
+            />
+          </label>
+        </div>
+        {error !== null ? <p className="form-error">{error}</p> : null}
+        <button className="primary-button" disabled={isSubmitting} type="submit">
+          {isSubmitting ? 'Publishing...' : 'Create and publish'}
+        </button>
+      </form>
+    </section>
+  );
+}
+
+function ManageActivityScreen(): ReactElement {
+  const navigate = useNavigate();
+  const { activityId } = useParams();
+  const [activity, setActivity] = useState<ActivityDetail | null>(null);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadManageContext = useCallback(async () => {
+    if (activityId === undefined) {
+      setError('Missing activity id');
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const [detail, roster] = await Promise.all([
+        apiClient.activities.detail<ActivityDetail>(activityId),
+        apiClient.activities.bookings<Booking>(activityId).catch((): Booking[] => [])
+      ]);
+
+      setActivity(detail);
+      setBookings(roster);
+      setTitle(detail.title);
+      setDescription(detail.description);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Unable to load host controls');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [activityId]);
+
+  useEffect(() => {
+    void loadManageContext();
+  }, [loadManageContext]);
+
+  async function saveBasics(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+
+    if (activity === null) {
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const updated = await apiClient.activities.update<ApiActivity>(activity.id, {
+        title: title.trim(),
+        description: description.trim()
+      });
+
+      setActivity({ ...activity, ...updated });
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Unable to save activity');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function applyStatus(action: 'publish' | 'pause' | 'archive'): Promise<void> {
+    if (activity === null || isSaving) {
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const updated =
+        action === 'publish'
+          ? await apiClient.activities.publish<ApiActivity>(activity.id)
+          : action === 'pause'
+            ? await apiClient.activities.pause<ApiActivity>(activity.id)
+            : await apiClient.activities.archive<ApiActivity>(activity.id);
+
+      setActivity({ ...activity, ...updated });
+    } catch (statusError) {
+      setError(statusError instanceof Error ? statusError.message : 'Unable to update status');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <section className="manage-screen manage-state">
+        <p className="eyebrow">Host controls</p>
+        <h1>Loading activity...</h1>
+      </section>
+    );
+  }
+
+  if (activity === null) {
+    return (
+      <section className="manage-screen manage-state">
+        <button className="text-button" onClick={() => navigate('/activities')} type="button">
+          Back
+        </button>
+        <p className="eyebrow">Host controls</p>
+        <h1>Could not load this activity</h1>
+        <p className="muted-copy">{error ?? 'The activity was not found.'}</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="manage-screen">
+      <header className="activities-header">
+        <div>
+          <p className="eyebrow">Host controls · {activity.status}</p>
+          <h1>{activity.title}</h1>
+        </div>
+        <button className="secondary-button" onClick={() => navigate(`/activities/${activity.id}`)} type="button">
+          View
+        </button>
+      </header>
+
+      {error !== null ? <p className="inline-error">{error}</p> : null}
+
+      <div className="manage-grid">
+        <form className="manage-panel" onSubmit={(event) => void saveBasics(event)}>
+          <p className="eyebrow">Basics</p>
+          <label>
+            Title
+            <input value={title} onChange={(event) => setTitle(event.currentTarget.value)} />
+          </label>
+          <label>
+            Description
+            <textarea
+              rows={5}
+              value={description}
+              onChange={(event) => setDescription(event.currentTarget.value)}
+            />
+          </label>
+          <button className="primary-button" disabled={isSaving} type="submit">
+            Save changes
+          </button>
+        </form>
+
+        <section className="manage-panel">
+          <p className="eyebrow">Status</p>
+          <div className="status-action-row">
+            <button
+              className="secondary-button"
+              disabled={isSaving}
+              onClick={() => void applyStatus('publish')}
+              type="button"
+            >
+              Publish
+            </button>
+            <button
+              className="secondary-button"
+              disabled={isSaving}
+              onClick={() => void applyStatus('pause')}
+              type="button"
+            >
+              Pause
+            </button>
+            <button
+              className="secondary-button"
+              disabled={isSaving}
+              onClick={() => void applyStatus('archive')}
+              type="button"
+            >
+              Archive
+            </button>
+          </div>
+          <div className="slot-list">
+            {activity.upcoming_open_slots.length === 0 ? (
+              <p className="muted-copy">No open slots.</p>
+            ) : (
+              activity.upcoming_open_slots.map((slot) => (
+                <article className="slot-card" key={slot.id}>
+                  <div>
+                    <strong>{formatSlotDateRange(slot.starts_at, slot.ends_at)}</strong>
+                    <span>
+                      {slot.booked_count}/{slot.capacity} booked · {slot.status}
+                    </span>
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+        </section>
+
+        <section className="manage-panel roster-panel">
+          <p className="eyebrow">Roster</p>
+          {bookings.length === 0 ? (
+            <p className="muted-copy">No bookings yet.</p>
+          ) : (
+            bookings.map((booking) => (
+              <article className="roster-row" key={booking.id}>
+                <div>
+                  <strong>{shortId(booking.explorer_id)}</strong>
+                  <span>{booking.status}</span>
+                </div>
+                <b>{booking.headcount}</b>
+              </article>
+            ))
+          )}
+        </section>
+      </div>
+    </section>
   );
 }
 
@@ -1701,6 +2240,55 @@ function formatInr(amount: number): string {
     maximumFractionDigits: 0,
     style: 'currency'
   }).format(amount);
+}
+
+function defaultActivityComposerState(): ActivityComposerState {
+  const start = new Date();
+  start.setDate(start.getDate() + 10);
+  start.setHours(6, 30, 0, 0);
+  const end = new Date(start);
+  end.setHours(start.getHours() + 2);
+
+  return {
+    title: 'Nandi Hills sunrise mobility circle',
+    description:
+      'A small, steady group session with warm-up drills, a scenic loop, and a clear regroup point.',
+    pillar: 'move',
+    category: 'mobility',
+    meetingPoint: 'Nandi Hills base parking, near the ticket counter',
+    lat: '13.3702',
+    lng: '77.6835',
+    basePriceInr: '799',
+    capacity: '8',
+    startsAt: toDatetimeLocalValue(start),
+    endsAt: toDatetimeLocalValue(end)
+  };
+}
+
+function toActivityPillar(value: string): ActivityPillar {
+  if (value === 'learn' || value === 'feel') {
+    return value;
+  }
+
+  return 'move';
+}
+
+function toDatetimeLocalValue(date: Date): string {
+  const pad = (value: number): string => value.toString().padStart(2, '0');
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+    date.getHours()
+  )}:${pad(date.getMinutes())}`;
+}
+
+function datetimeLocalToIso(value: string): string {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    throw new Error('Choose a valid slot time');
+  }
+
+  return date.toISOString();
 }
 
 function appendUniqueFeedPosts(currentPosts: FeedPost[], nextPosts: FeedPost[]): FeedPost[] {

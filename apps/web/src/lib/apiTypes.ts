@@ -26,6 +26,10 @@ export type NearbyActivity = ApiActivity & {
   next_open_slot: ActivitySlot | null;
 };
 
+export type HostedActivity = ApiActivity & {
+  next_open_slot: ActivitySlot | null;
+};
+
 export type ActivityDetail = ApiActivity & {
   upcoming_open_slots: ActivitySlot[];
 };
