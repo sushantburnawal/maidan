@@ -25,12 +25,14 @@ import { apiClient, type ReadyResponse } from './lib/apiClient';
 import type {
   ActivityDetail,
   ActivityVibe,
+  ChatMessage,
   CreateBookingResponse,
   FeedPost,
   InitPaymentResponse,
   JoinedChatState,
   NearbyActivity,
   PaginatedFeedResponse,
+  PaginatedMessagesResponse,
   PaymentWebhookResponse,
   PublicProfile
 } from './lib/apiTypes';
@@ -40,7 +42,7 @@ import {
   subscribeAuthTokens,
   type AuthTokens
 } from './lib/authTokens';
-import { realtimeClient, type RealtimeStatus } from './lib/realtime';
+import { realtimeClient, type CompactMessage, type RealtimeStatus } from './lib/realtime';
 
 const osmStyle: StyleSpecification = {
   version: 8,
@@ -68,6 +70,8 @@ const navItems = [
   { to: '/activities', label: 'Activities' },
   { to: '/you', label: 'You' }
 ] as const;
+
+const joinedChatsStorageKey = 'maidan.joinedChats.v1';
 
 export function App(): ReactElement {
   return (
@@ -160,7 +164,7 @@ function AppShell({ hasTokens }: { hasTokens: boolean }): ReactElement {
           />
           <Route path="/activities/:activityId" element={<ActivityDetailScreen />} />
           <Route path="/activities/:activityId/join" element={<JoinFlowScreen />} />
-          <Route path="/chats/:chatId" element={<ChatRoomStub />} />
+          <Route path="/chats/:chatId" element={<ChatRoomScreen />} />
           <Route path="/you" element={<Placeholder title="You" eyebrow="Profile and host mode" />} />
           <Route path="*" element={<Navigate to="/map" replace />} />
         </Routes>
@@ -974,7 +978,8 @@ function JoinFlowScreen(): ReactElement {
 
     setStep('confirmed');
     const timer = window.setTimeout(() => {
-      navigate(`/chats/${chat.id}`, {
+      storeJoinedChatState({ activityId: activity.id, chat });
+      navigate(`/chats/${chat.id}?activityId=${activity.id}`, {
         replace: true,
         state: { activityId: activity.id, chat } satisfies JoinedChatState
       });
@@ -1123,19 +1128,363 @@ function JoinFlowScreen(): ReactElement {
   );
 }
 
-function ChatRoomStub(): ReactElement {
+function ChatRoomScreen(): ReactElement {
   const { chatId } = useParams();
   const location = useLocation();
-  const joinedState = getJoinedChatState(location.state);
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const joinedState =
+    getJoinedChatState(location.state) ??
+    (chatId === undefined ? null : getStoredJoinedChatState(chatId));
+  const activityId =
+    joinedState?.activityId ?? joinedState?.chat.activity_id ?? searchParams.get('activityId');
+  const currentProfileId = getCurrentProfileId();
+  const [activity, setActivity] = useState<ActivityDetail | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [hasJoinedRoom, setHasJoinedRoom] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [onlineProfileIds, setOnlineProfileIds] = useState<Set<string>>(
+    () => new Set(currentProfileId === null ? [] : [currentProfileId])
+  );
+  const [typingProfileIds, setTypingProfileIds] = useState<Set<string>>(() => new Set());
+  const isTypingRef = useRef(false);
+  const typingStopTimerRef = useRef<number | null>(null);
+  const typingTimersRef = useRef<Map<string, number>>(new Map());
+  const isHost = activity !== null && currentProfileId === activity.host_id;
+  const chatTitle = joinedState?.chat.title ?? activity?.title ?? 'Activity chat';
+
+  const loadMessages = useCallback(
+    async ({ cursor, reset }: { cursor?: string | null; reset: boolean }) => {
+      if (chatId === undefined) {
+        setError('Missing chat id');
+        setIsLoading(false);
+        return;
+      }
+
+      if (reset) {
+        setIsLoading(true);
+        setMessages([]);
+        setNextCursor(null);
+      } else {
+        setIsLoadingMore(true);
+      }
+
+      setError(null);
+
+      try {
+        const response = await apiClient.chats.messages<PaginatedMessagesResponse>(
+          chatId,
+          cursor ?? undefined
+        );
+        const chronologicalMessages = response.items.slice().reverse();
+
+        setMessages((currentMessages) =>
+          reset
+            ? chronologicalMessages
+            : prependUniqueMessages(currentMessages, chronologicalMessages)
+        );
+        setNextCursor(response.next_cursor);
+      } catch (loadError) {
+        setError(loadError instanceof Error ? loadError.message : 'Unable to load chat');
+      } finally {
+        setIsLoading(false);
+        setIsLoadingMore(false);
+      }
+    },
+    [chatId]
+  );
+
+  useEffect(() => {
+    if (joinedState !== null) {
+      storeJoinedChatState(joinedState);
+    }
+  }, [joinedState]);
+
+  useEffect(() => {
+    void loadMessages({ reset: true });
+  }, [loadMessages]);
+
+  useEffect(() => {
+    if (activityId === null) {
+      setActivity(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    apiClient.activities
+      .detail<ActivityDetail>(activityId)
+      .then((detail) => {
+        if (!cancelled) {
+          setActivity(detail);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setActivity(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activityId]);
+
+  const stopTyping = useCallback(() => {
+    if (typingStopTimerRef.current !== null) {
+      window.clearTimeout(typingStopTimerRef.current);
+      typingStopTimerRef.current = null;
+    }
+
+    if (chatId !== undefined && isTypingRef.current) {
+      isTypingRef.current = false;
+      void realtimeClient.sendTyping(chatId, false);
+    }
+  }, [chatId]);
+
+  useEffect(() => {
+    if (chatId === undefined) {
+      return undefined;
+    }
+
+    realtimeClient.connect();
+    setHasJoinedRoom(false);
+    setOnlineProfileIds(new Set(currentProfileId === null ? [] : [currentProfileId]));
+    setTypingProfileIds(new Set());
+
+    let active = true;
+    void realtimeClient.joinChat(chatId).then((ack) => {
+      if (!active) {
+        return;
+      }
+
+      if (ack.ok) {
+        setHasJoinedRoom(true);
+      } else {
+        setError(ack.error ?? 'Could not join chat room');
+      }
+    });
+
+    const offMessage = realtimeClient.on('message:new', (message) => {
+      if (message.chat_id !== chatId) {
+        return;
+      }
+
+      setMessages((currentMessages) => appendUniqueMessages(currentMessages, [message]));
+      clearTypingProfile(message.sender_id, typingTimersRef.current, setTypingProfileIds);
+    });
+    const offPresence = realtimeClient.on('presence', (payload) => {
+      if (payload.chatId !== undefined && payload.chatId !== chatId) {
+        return;
+      }
+
+      setOnlineProfileIds((currentProfileIds) => {
+        const nextProfileIds = new Set(currentProfileIds);
+
+        if (payload.status === 'online') {
+          nextProfileIds.add(payload.profileId);
+        } else {
+          nextProfileIds.delete(payload.profileId);
+        }
+
+        return nextProfileIds;
+      });
+    });
+    const offTyping = realtimeClient.on('typing', (payload) => {
+      if (payload.chatId !== chatId || payload.profileId === currentProfileId) {
+        return;
+      }
+
+      if (payload.isTyping) {
+        setTypingProfileIds((currentProfileIds) => new Set(currentProfileIds).add(payload.profileId));
+        const existingTimer = typingTimersRef.current.get(payload.profileId);
+
+        if (existingTimer !== undefined) {
+          window.clearTimeout(existingTimer);
+        }
+
+        typingTimersRef.current.set(
+          payload.profileId,
+          window.setTimeout(() => {
+            clearTypingProfile(payload.profileId, typingTimersRef.current, setTypingProfileIds);
+          }, 2500)
+        );
+      } else {
+        clearTypingProfile(payload.profileId, typingTimersRef.current, setTypingProfileIds);
+      }
+    });
+
+    return () => {
+      active = false;
+      stopTyping();
+      realtimeClient.leaveChat(chatId);
+      offMessage();
+      offPresence();
+      offTyping();
+      for (const timer of typingTimersRef.current.values()) {
+        window.clearTimeout(timer);
+      }
+      typingTimersRef.current.clear();
+    };
+  }, [chatId, currentProfileId, stopTyping]);
+
+  function updateDraft(value: string): void {
+    setDraft(value);
+
+    if (chatId === undefined) {
+      return;
+    }
+
+    if (!isTypingRef.current && value.trim().length > 0) {
+      isTypingRef.current = true;
+      void realtimeClient.sendTyping(chatId, true);
+    }
+
+    if (typingStopTimerRef.current !== null) {
+      window.clearTimeout(typingStopTimerRef.current);
+    }
+
+    typingStopTimerRef.current = window.setTimeout(stopTyping, 1400);
+  }
+
+  async function sendChatMessage(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+
+    if (chatId === undefined || isSending || !hasJoinedRoom) {
+      return;
+    }
+
+    const body = draft.trim();
+
+    if (body.length === 0) {
+      return;
+    }
+
+    setIsSending(true);
+    setError(null);
+
+    try {
+      const ack = await realtimeClient.sendMessage(chatId, body);
+
+      if (!ack.ok) {
+        setError(ack.error ?? 'Message could not be sent');
+        return;
+      }
+
+      const sentMessage = ack.message;
+
+      if (sentMessage !== undefined) {
+        setMessages((currentMessages) => appendUniqueMessages(currentMessages, [sentMessage]));
+      }
+
+      setDraft('');
+      stopTyping();
+    } finally {
+      setIsSending(false);
+    }
+  }
+
+  if (chatId === undefined) {
+    return (
+      <section className="chat-screen chat-state">
+        <p className="eyebrow">Group chat</p>
+        <h1>Missing chat</h1>
+        <p className="muted-copy">Open a chat from a confirmed booking.</p>
+      </section>
+    );
+  }
 
   return (
-    <section className="chat-stub">
-      <p className="eyebrow">Group chat</p>
-      <h1>{joinedState?.chat.title ?? 'Activity chat'}</h1>
-      <p className="muted-copy">
-        Chat room {joinedState?.chat.id ?? chatId} is ready. W6 adds history, presence, typing, and
-        sending.
-      </p>
+    <section className="chat-screen">
+      <header className="chat-header">
+        <button className="text-button" onClick={() => navigate(-1)} type="button">
+          Back
+        </button>
+        <div>
+          <p className="eyebrow">{isHost ? 'Host chat' : 'Group chat'}</p>
+          <h1>{chatTitle}</h1>
+          <p className="chat-presence">
+            {onlineProfileIds.size === 0
+              ? 'No one else is live right now'
+              : `${onlineProfileIds.size} live now`}
+            {typingProfileIds.size > 0
+              ? ` · ${formatTypingProfiles(typingProfileIds)} typing`
+              : ''}
+          </p>
+        </div>
+        {isHost && activity !== null ? (
+          <button
+            aria-label="Manage activity"
+            className="chat-info-button"
+            onClick={() => navigate(`/activities/${activity.id}/manage`)}
+            type="button"
+          >
+            ⓘ
+          </button>
+        ) : (
+          <span className="member-pill">Member view</span>
+        )}
+      </header>
+
+      {error !== null ? <p className="inline-error">{error}</p> : null}
+
+      <div className="chat-message-list" aria-live="polite">
+        {nextCursor !== null ? (
+          <button
+            className="load-more-button"
+            disabled={isLoadingMore}
+            onClick={() => void loadMessages({ cursor: nextCursor, reset: false })}
+            type="button"
+          >
+            {isLoadingMore ? 'Loading...' : 'Load earlier messages'}
+          </button>
+        ) : null}
+        {isLoading && messages.length === 0 ? <p className="feed-loading">Loading chat...</p> : null}
+        {!isLoading && messages.length === 0 && error === null ? (
+          <div className="chat-empty">
+            <p className="eyebrow">Group chat</p>
+            <h2>Start the thread</h2>
+            <p className="muted-copy">Messages from this activity group will appear here.</p>
+          </div>
+        ) : null}
+        {messages.map((message) => {
+          const isOwnMessage = message.sender_id === currentProfileId;
+
+          return (
+            <article
+              className={isOwnMessage ? 'chat-message chat-message-own' : 'chat-message'}
+              key={message.id}
+            >
+              <span>{isOwnMessage ? 'You' : `Member ${shortId(message.sender_id)}`}</span>
+              <p>{message.body}</p>
+              <time dateTime={message.created_at}>{formatFeedDate(message.created_at)}</time>
+            </article>
+          );
+        })}
+      </div>
+
+      <form className="chat-compose" onSubmit={(event) => void sendChatMessage(event)}>
+        <label htmlFor="chat-message">Message</label>
+        <textarea
+          id="chat-message"
+          onChange={(event) => updateDraft(event.currentTarget.value)}
+          placeholder="Write to the group"
+          rows={2}
+          value={draft}
+        />
+        <button
+          className="primary-button"
+          disabled={isSending || !hasJoinedRoom || draft.trim().length === 0}
+          type="submit"
+        >
+          {isSending ? 'Sending...' : 'Send'}
+        </button>
+      </form>
     </section>
   );
 }
@@ -1161,6 +1510,123 @@ function getJoinedChatState(state: unknown): JoinedChatState | null {
     activityId: candidate.activityId,
     chat: candidate.chat as GroupChat
   };
+}
+
+function getStoredJoinedChatState(chatId: string): JoinedChatState | null {
+  try {
+    const rawValue = window.sessionStorage.getItem(joinedChatsStorageKey);
+
+    if (rawValue === null) {
+      return null;
+    }
+
+    const parsed = JSON.parse(rawValue) as unknown;
+
+    if (typeof parsed !== 'object' || parsed === null || !(chatId in parsed)) {
+      return null;
+    }
+
+    return getJoinedChatState((parsed as Record<string, unknown>)[chatId]);
+  } catch {
+    return null;
+  }
+}
+
+function storeJoinedChatState(state: JoinedChatState): void {
+  try {
+    const rawValue = window.sessionStorage.getItem(joinedChatsStorageKey);
+    const parsed = rawValue === null ? {} : (JSON.parse(rawValue) as unknown);
+    const storedChats =
+      typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {};
+
+    storedChats[state.chat.id] = state;
+    window.sessionStorage.setItem(joinedChatsStorageKey, JSON.stringify(storedChats));
+  } catch {
+    // Session storage can be unavailable in private or restricted browser contexts.
+  }
+}
+
+function appendUniqueMessages(
+  currentMessages: ChatMessage[],
+  nextMessages: CompactMessage[]
+): ChatMessage[] {
+  const seenIds = new Set(currentMessages.map((message) => message.id));
+  const uniqueNextMessages = nextMessages.filter((message) => !seenIds.has(message.id));
+
+  return [...currentMessages, ...uniqueNextMessages];
+}
+
+function prependUniqueMessages(
+  currentMessages: ChatMessage[],
+  olderMessages: ChatMessage[]
+): ChatMessage[] {
+  const seenIds = new Set(currentMessages.map((message) => message.id));
+  const uniqueOlderMessages = olderMessages.filter((message) => !seenIds.has(message.id));
+
+  return [...uniqueOlderMessages, ...currentMessages];
+}
+
+function clearTypingProfile(
+  profileId: string,
+  timers: Map<string, number>,
+  setTypingProfileIds: (updater: (currentProfileIds: Set<string>) => Set<string>) => void
+): void {
+  const timer = timers.get(profileId);
+
+  if (timer !== undefined) {
+    window.clearTimeout(timer);
+    timers.delete(profileId);
+  }
+
+  setTypingProfileIds((currentProfileIds) => {
+    const nextProfileIds = new Set(currentProfileIds);
+    nextProfileIds.delete(profileId);
+
+    return nextProfileIds;
+  });
+}
+
+function formatTypingProfiles(profileIds: Set<string>): string {
+  const labels = Array.from(profileIds)
+    .slice(0, 2)
+    .map((profileId) => shortId(profileId));
+
+  if (profileIds.size > 2) {
+    labels.push(`+${profileIds.size - 2}`);
+  }
+
+  return labels.join(', ');
+}
+
+function getCurrentProfileId(): string | null {
+  const accessToken = getAuthTokens()?.accessToken;
+
+  if (accessToken === undefined) {
+    return null;
+  }
+
+  return readJwtSubject(accessToken);
+}
+
+function readJwtSubject(token: string): string | null {
+  const [, payload] = token.split('.');
+
+  if (payload === undefined) {
+    return null;
+  }
+
+  try {
+    const normalizedPayload = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const paddedPayload = normalizedPayload.padEnd(
+      normalizedPayload.length + ((4 - (normalizedPayload.length % 4)) % 4),
+      '='
+    );
+    const parsed = JSON.parse(window.atob(paddedPayload)) as unknown;
+
+    return readStringField(parsed, 'sub');
+  } catch {
+    return null;
+  }
 }
 
 function getActivityImage(activity: ActivityDetail): { url: string; alt: string } | null {

@@ -158,9 +158,11 @@ export class RealtimeClient {
       return Promise.resolve({ ok: false, error: 'Realtime socket is not connected' });
     }
 
-    return new Promise((resolve) => {
-      this.socket?.emit('join', { chatId }, resolve);
-    });
+    return this.emitWithAck(
+      (ack) => this.socket?.emit('join', { chatId }, ack),
+      'Chat room join was not acknowledged',
+      3
+    );
   }
 
   leaveChat(chatId: string): void {
@@ -172,9 +174,11 @@ export class RealtimeClient {
       return Promise.resolve({ ok: false, error: 'Realtime socket is not connected' });
     }
 
-    return new Promise((resolve) => {
-      this.socket?.emit('message:send', { chatId, body }, resolve);
-    });
+    return this.emitWithAck(
+      (ack) => this.socket?.emit('message:send', { chatId, body }, ack),
+      'Message send was not acknowledged',
+      1
+    );
   }
 
   sendTyping(chatId: string, isTyping = true): Promise<BasicAck> {
@@ -182,9 +186,11 @@ export class RealtimeClient {
       return Promise.resolve({ ok: false, error: 'Realtime socket is not connected' });
     }
 
-    return new Promise((resolve) => {
-      this.socket?.emit('typing', { chatId, isTyping }, resolve);
-    });
+    return this.emitWithAck(
+      (ack) => this.socket?.emit('typing', { chatId, isTyping }, ack),
+      'Typing update was not acknowledged',
+      1
+    );
   }
 
   private setStatus(status: RealtimeStatus): void {
@@ -205,6 +211,51 @@ export class RealtimeClient {
         untypedSocket.on(event, handler);
       }
     }
+  }
+
+  private emitWithAck<TAck extends BasicAck>(
+    emit: (ack: (response: TAck) => void) => void,
+    timeoutError: string,
+    maxAttempts: number
+  ): Promise<TAck> {
+    return new Promise((resolve) => {
+      let attempts = 0;
+      let settled = false;
+      let timer: number | null = null;
+
+      const finish = (response: TAck): void => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+
+        if (timer !== null) {
+          window.clearTimeout(timer);
+        }
+
+        resolve(response);
+      };
+
+      const attempt = (): void => {
+        attempts += 1;
+        emit(finish);
+        timer = window.setTimeout(() => {
+          if (settled) {
+            return;
+          }
+
+          if (attempts >= maxAttempts) {
+            finish({ ok: false, error: timeoutError } as TAck);
+            return;
+          }
+
+          attempt();
+        }, 800);
+      };
+
+      attempt();
+    });
   }
 }
 

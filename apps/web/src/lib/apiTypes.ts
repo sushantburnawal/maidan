@@ -4,6 +4,7 @@ import type {
   ActivitySlot,
   Booking,
   GroupChat,
+  Message,
   Payment,
   PaymentStatus,
   Post,
@@ -116,5 +117,12 @@ export type FeedPost = ApiPost & {
 
 export interface PaginatedFeedResponse {
   items: FeedPost[];
+  next_cursor: string | null;
+}
+
+export type ChatMessage = Pick<Message, 'id' | 'chat_id' | 'sender_id' | 'body' | 'created_at'>;
+
+export interface PaginatedMessagesResponse {
+  items: ChatMessage[];
   next_cursor: string | null;
 }
