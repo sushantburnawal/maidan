@@ -191,6 +191,108 @@ h1 {
   line-height: 1.45;
 }
 
+.realtime-line {
+  margin: 2px 0 10px;
+}
+
+.location-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.location-actions button,
+.nearby-list button {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.location-actions button {
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.inline-error {
+  margin: 8px 0;
+  color: #9c6411;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.nearby-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.nearby-list button {
+  padding: 10px;
+  text-align: left;
+}
+
+.nearby-list b,
+.nearby-list span {
+  display: block;
+}
+
+.nearby-list b {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nearby-list span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+
+.activity-pin {
+  width: 34px;
+  height: 34px;
+  border: 2px solid #fff;
+  border-radius: 50% 50% 50% 8px;
+  color: #fff;
+  box-shadow: 0 8px 18px -10px rgba(20, 24, 33, 0.9);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 900;
+  transform: rotate(45deg);
+}
+
+.activity-pin span {
+  display: block;
+  transform: rotate(-45deg);
+}
+
+.activity-pin-move {
+  background: var(--move);
+}
+
+.activity-pin-learn {
+  background: var(--learn);
+}
+
+.activity-pin-feel {
+  background: var(--feel);
+}
+
+.user-location-marker {
+  width: 18px;
+  height: 18px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 8px rgba(49, 68, 230, 0.18);
+}
+
 .create-fab {
   position: absolute;
   right: 18px;
@@ -216,6 +318,36 @@ h1 {
   gap: 8px;
   padding: 28px;
   background: var(--screen);
+}
+
+.detail-stub {
+  min-height: 100vh;
+  display: grid;
+  align-content: center;
+  gap: 12px;
+  padding: 24px;
+  background: var(--screen);
+}
+
+.detail-stub p {
+  max-width: 620px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.detail-stub .text-button {
+  justify-self: start;
+}
+
+.detail-stub-slot {
+  width: fit-content;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--fill);
+  color: var(--ink);
+  font-weight: 800;
 }
 
 .onboarding-screen {
