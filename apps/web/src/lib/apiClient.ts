@@ -110,7 +110,14 @@ export const apiClient = {
   },
   payments: {
     init: <TResponse>(body: InitPaymentDto) =>
-      request<TResponse>('/payments/init', { method: 'POST', body })
+      request<TResponse>('/payments/init', { method: 'POST', body }),
+    completeFake: <TResponse>(body: unknown, authorization: string) =>
+      request<TResponse>('/payments/webhook', {
+        auth: false,
+        body,
+        headers: { authorization },
+        method: 'POST'
+      })
   },
   profiles: {
     me: <TResponse>() => request<TResponse>('/me'),

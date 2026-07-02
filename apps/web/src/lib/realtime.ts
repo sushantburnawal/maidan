@@ -80,6 +80,7 @@ interface UntypedEventSocket {
 export class RealtimeClient {
   private socket: Socket<ServerToClientEvents, ClientToServerEvents> | null = null;
   private status: RealtimeStatus = 'idle';
+  private readonly eventListeners = new Map<string, Set<UntypedEventHandler>>();
   private readonly statusListeners = new Set<(status: RealtimeStatus) => void>();
 
   getStatus(): RealtimeStatus {
@@ -121,6 +122,7 @@ export class RealtimeClient {
     this.socket.on('connect_error', () => this.setStatus('error'));
     this.socket.on('disconnect', () => this.setStatus('idle'));
     this.socket.on('realtime:error', () => this.setStatus('error'));
+    this.attachStoredEventListeners(this.socket);
   }
 
   disconnect(): void {
@@ -132,17 +134,22 @@ export class RealtimeClient {
     event: KEvent,
     handler: ServerToClientEvents[KEvent]
   ): () => void {
+    const eventName = String(event);
     const socket = this.socket as UntypedEventSocket | null;
+    const untypedHandler = handler as UntypedEventHandler;
 
-    if (socket === null) {
-      return () => undefined;
+    this.eventListeners.set(
+      eventName,
+      (this.eventListeners.get(eventName) ?? new Set<UntypedEventHandler>()).add(untypedHandler)
+    );
+
+    if (socket !== null) {
+      socket.on(eventName, untypedHandler);
     }
 
-    const untypedHandler = handler as UntypedEventHandler;
-    socket.on(event, untypedHandler);
-
     return () => {
-      socket.off(event, untypedHandler);
+      this.eventListeners.get(eventName)?.delete(untypedHandler);
+      socket?.off(eventName, untypedHandler);
     };
   }
 
@@ -185,6 +192,18 @@ export class RealtimeClient {
 
     for (const listener of this.statusListeners) {
       listener(status);
+    }
+  }
+
+  private attachStoredEventListeners(
+    socket: Socket<ServerToClientEvents, ClientToServerEvents>
+  ): void {
+    const untypedSocket = socket as unknown as UntypedEventSocket;
+
+    for (const [event, handlers] of this.eventListeners.entries()) {
+      for (const handler of handlers) {
+        untypedSocket.on(event, handler);
+      }
     }
   }
 }

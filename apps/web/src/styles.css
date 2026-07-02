@@ -641,6 +641,84 @@ h1 {
   opacity: 0.62;
 }
 
+.join-screen,
+.chat-stub {
+  min-height: calc(100vh - 70px);
+  display: grid;
+  align-content: center;
+  gap: 18px;
+  padding: 24px;
+  background: var(--screen);
+}
+
+.join-screen > .text-button {
+  justify-self: start;
+}
+
+.join-grid {
+  display: grid;
+  width: min(760px, 100%);
+}
+
+.join-card {
+  display: grid;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.join-card h1 {
+  font-size: clamp(28px, 4vw, 42px);
+}
+
+.join-summary,
+.join-receipt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--screen);
+}
+
+.join-summary span,
+.join-receipt span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.join-summary strong {
+  font-size: 24px;
+}
+
+.join-waiting,
+.join-confirmed {
+  margin: 0;
+  border-radius: 12px;
+  padding: 12px;
+  font-weight: 800;
+}
+
+.join-waiting {
+  background: #fff6df;
+  color: #9c6411;
+}
+
+.join-confirmed {
+  background: #def3e9;
+  color: #1b8a5a;
+}
+
+.chat-stub {
+  justify-items: start;
+}
+
 .onboarding-screen {
   min-height: 100vh;
   display: grid;
@@ -775,7 +853,9 @@ h1 {
 
   .map-screen,
   .placeholder-screen,
-  .detail-screen {
+  .detail-screen,
+  .join-screen,
+  .chat-stub {
     min-height: 100vh;
   }
 

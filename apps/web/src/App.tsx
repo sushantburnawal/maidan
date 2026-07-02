@@ -13,15 +13,25 @@ import {
   NavLink,
   Route,
   Routes,
+  useLocation,
   useNavigate,
   useParams,
   useSearchParams
 } from 'react-router-dom';
 import maplibregl, { type StyleSpecification } from 'maplibre-gl';
-import type { ActivityPillar, GeoPoint } from '@maidan/shared';
+import type { ActivityPillar, ActivitySlot, Booking, GeoPoint, GroupChat, Payment } from '@maidan/shared';
 
 import { apiClient, type ReadyResponse } from './lib/apiClient';
-import type { ActivityDetail, ActivityVibe, NearbyActivity, PublicProfile } from './lib/apiTypes';
+import type {
+  ActivityDetail,
+  ActivityVibe,
+  CreateBookingResponse,
+  InitPaymentResponse,
+  JoinedChatState,
+  NearbyActivity,
+  PaymentWebhookResponse,
+  PublicProfile
+} from './lib/apiTypes';
 import {
   getAuthTokens,
   setAuthTokens,
@@ -147,7 +157,8 @@ function AppShell({ hasTokens }: { hasTokens: boolean }): ReactElement {
             element={<Placeholder title="Activities" eyebrow="Hosting / Joined" />}
           />
           <Route path="/activities/:activityId" element={<ActivityDetailScreen />} />
-          <Route path="/activities/:activityId/join" element={<JoinFlowStub />} />
+          <Route path="/activities/:activityId/join" element={<JoinFlowScreen />} />
+          <Route path="/chats/:chatId" element={<ChatRoomStub />} />
           <Route path="/you" element={<Placeholder title="You" eyebrow="Profile and host mode" />} />
           <Route path="*" element={<Navigate to="/map" replace />} />
         </Routes>
@@ -721,20 +732,282 @@ function ActivityDetailScreen(): ReactElement {
   );
 }
 
-function JoinFlowStub(): ReactElement {
+type JoinStep = 'loading' | 'ready' | 'booking' | 'payment' | 'waiting' | 'confirmed' | 'error';
+
+function JoinFlowScreen(): ReactElement {
+  const navigate = useNavigate();
   const { activityId } = useParams();
   const [searchParams] = useSearchParams();
+  const slotId = searchParams.get('slotId');
+  const [activity, setActivity] = useState<ActivityDetail | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<ActivitySlot | null>(null);
+  const [booking, setBooking] = useState<Booking | null>(null);
+  const [payment, setPayment] = useState<Payment | null>(null);
+  const [chat, setChat] = useState<GroupChat | null>(null);
+  const [step, setStep] = useState<JoinStep>('loading');
+  const [error, setError] = useState<string | null>(null);
+  const [bookingConfirmed, setBookingConfirmed] = useState(false);
+  const [chatJoined, setChatJoined] = useState(false);
+
+  useEffect(() => {
+    if (activityId === undefined || slotId === null) {
+      setStep('error');
+      setError('Choose an open slot before booking.');
+      return;
+    }
+
+    let cancelled = false;
+    const currentActivityId = activityId;
+    const currentSlotId = slotId;
+
+    async function loadJoinContext(): Promise<void> {
+      setStep('loading');
+      setError(null);
+
+      try {
+        const detail = await apiClient.activities.detail<ActivityDetail>(currentActivityId);
+        const slot =
+          detail.upcoming_open_slots.find((candidate) => candidate.id === currentSlotId) ?? null;
+
+        if (!cancelled) {
+          setActivity(detail);
+          setSelectedSlot(slot);
+          setStep(slot === null ? 'error' : 'ready');
+          setError(slot === null ? 'This slot is no longer open.' : null);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setStep('error');
+          setError(loadError instanceof Error ? loadError.message : 'Unable to load this slot');
+        }
+      }
+    }
+
+    void loadJoinContext();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activityId, slotId]);
+
+  useEffect(() => {
+    realtimeClient.connect();
+
+    const offBookingConfirmed = realtimeClient.on('booking:confirmed', (payload) => {
+      const bookingId = readStringField(payload.booking, 'booking_id') ?? readStringField(payload.booking, 'id');
+
+      if (booking !== null && bookingId === booking.id) {
+        setBookingConfirmed(true);
+        setChat(payload.chat);
+      }
+    });
+    const offChatJoined = realtimeClient.on('chat:joined', (payload) => {
+      if (activity !== null && payload.chat.activity_id === activity.id) {
+        setChatJoined(true);
+        setChat(payload.chat);
+      }
+    });
+
+    return () => {
+      offBookingConfirmed();
+      offChatJoined();
+    };
+  }, [activity, booking]);
+
+  useEffect(() => {
+    if (!bookingConfirmed || !chatJoined || chat === null || activity === null) {
+      return undefined;
+    }
+
+    setStep('confirmed');
+    const timer = window.setTimeout(() => {
+      navigate(`/chats/${chat.id}`, {
+        replace: true,
+        state: { activityId: activity.id, chat } satisfies JoinedChatState
+      });
+    }, 800);
+
+    return () => window.clearTimeout(timer);
+  }, [activity, bookingConfirmed, chat, chatJoined, navigate]);
+
+  async function bookSelectedSlot(): Promise<void> {
+    if (selectedSlot === null || step === 'booking' || step === 'payment' || step === 'waiting') {
+      return;
+    }
+
+    setStep('booking');
+    setError(null);
+
+    try {
+      const created = await apiClient.bookings.create<CreateBookingResponse>({
+        headcount: 1,
+        slotId: selectedSlot.id
+      });
+      setBooking(created.booking);
+
+      const initiated = await apiClient.payments.init<InitPaymentResponse>({
+        bookingId: created.booking.id
+      });
+      setPayment(initiated.payment);
+      setStep(initiated.already_paid ? 'waiting' : 'payment');
+
+      if (initiated.already_paid) {
+        setBookingConfirmed(true);
+      }
+    } catch (bookingError) {
+      setStep('error');
+      setError(toJoinErrorMessage(bookingError));
+    }
+  }
+
+  async function completeFakePayment(): Promise<void> {
+    if (payment === null || step === 'waiting') {
+      return;
+    }
+
+    setStep('waiting');
+    setError(null);
+
+    try {
+      const webhook = await apiClient.payments.completeFake<PaymentWebhookResponse>(
+        createFakePaymentWebhook(payment),
+        await createFakeWebhookAuthorization()
+      );
+
+      if (webhook.terminal_status === 'failed') {
+        setStep('error');
+        setError('Payment failed. No spot was confirmed.');
+        return;
+      }
+
+      if (!webhook.received) {
+        setStep('error');
+        setError('Payment confirmation was not accepted.');
+      }
+    } catch (paymentError) {
+      setStep('error');
+      setError(paymentError instanceof Error ? paymentError.message : 'Payment failed');
+    }
+  }
+
+  if (step === 'loading') {
+    return (
+      <section className="join-screen join-state">
+        <p className="eyebrow">Join</p>
+        <h1>Preparing your spot...</h1>
+      </section>
+    );
+  }
+
+  if (activity === null || selectedSlot === null) {
+    return (
+      <section className="join-screen join-state">
+        <button className="text-button" onClick={() => navigate(-1)} type="button">
+          Back
+        </button>
+        <p className="eyebrow">Join</p>
+        <h1>Could not start booking</h1>
+        <p className="muted-copy">{error ?? 'This slot is unavailable.'}</p>
+      </section>
+    );
+  }
 
   return (
-    <section className="detail-screen detail-state">
-      <p className="eyebrow">Join</p>
-      <h1>Booking starts here</h1>
+    <section className="join-screen">
+      <button className="text-button" onClick={() => navigate(`/activities/${activity.id}`)} type="button">
+        Back to detail
+      </button>
+      <div className="join-grid">
+        <article className="join-card">
+          <p className="eyebrow">Join</p>
+          <h1>{activity.title}</h1>
+          <p className="muted-copy">{formatSlotDateRange(selectedSlot.starts_at, selectedSlot.ends_at)}</p>
+          <div className="join-summary">
+            <span>1 spot</span>
+            <strong>{formatInr(activity.base_price_inr)}</strong>
+          </div>
+          <div className="maidan-way">
+            <p className="eyebrow">The Maidan way</p>
+            <p>Pay only when you mean it. The host holds capacity for you once payment lands.</p>
+          </div>
+          {booking !== null ? (
+            <div className="join-receipt">
+              <span>Booking</span>
+              <b>{booking.status}</b>
+            </div>
+          ) : null}
+          {payment !== null ? (
+            <div className="join-receipt">
+              <span>Payment</span>
+              <b>{payment.status}</b>
+            </div>
+          ) : null}
+          {error !== null ? <p className="form-error">{error}</p> : null}
+          {step === 'ready' || step === 'error' || step === 'booking' ? (
+            <button
+              className="primary-button"
+              disabled={step === 'booking'}
+              onClick={() => void bookSelectedSlot()}
+              type="button"
+            >
+              {step === 'booking' ? 'Booking...' : 'Book spot'}
+            </button>
+          ) : null}
+          {step === 'payment' ? (
+            <button className="primary-button" onClick={() => void completeFakePayment()} type="button">
+              Complete payment (fake)
+            </button>
+          ) : null}
+          {step === 'waiting' ? (
+            <p className="join-waiting">Waiting for booking confirmation and chat invite...</p>
+          ) : null}
+          {step === 'confirmed' ? (
+            <p className="join-confirmed">Payment confirmed. Opening your group chat...</p>
+          ) : null}
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function ChatRoomStub(): ReactElement {
+  const { chatId } = useParams();
+  const location = useLocation();
+  const joinedState = getJoinedChatState(location.state);
+
+  return (
+    <section className="chat-stub">
+      <p className="eyebrow">Group chat</p>
+      <h1>{joinedState?.chat.title ?? 'Activity chat'}</h1>
       <p className="muted-copy">
-        W4 will complete booking and payment for activity {activityId} slot{' '}
-        {searchParams.get('slotId') ?? 'selected'}.
+        Chat room {joinedState?.chat.id ?? chatId} is ready. W6 adds history, presence, typing, and
+        sending.
       </p>
     </section>
   );
+}
+
+function getJoinedChatState(state: unknown): JoinedChatState | null {
+  if (typeof state !== 'object' || state === null || !('chat' in state) || !('activityId' in state)) {
+    return null;
+  }
+
+  const candidate = state as { activityId?: unknown; chat?: Partial<GroupChat> };
+
+  if (
+    typeof candidate.activityId !== 'string' ||
+    typeof candidate.chat?.id !== 'string' ||
+    typeof candidate.chat.activity_id !== 'string' ||
+    typeof candidate.chat.title !== 'string' ||
+    typeof candidate.chat.created_at !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    activityId: candidate.activityId,
+    chat: candidate.chat as GroupChat
+  };
 }
 
 function getActivityImage(activity: ActivityDetail): { url: string; alt: string } | null {
@@ -813,6 +1086,67 @@ function formatInr(amount: number): string {
 
 function clampPercent(value: number): number {
   return Math.min(100, Math.max(0, value));
+}
+
+function readStringField(value: unknown, field: string): string | null {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+
+  const candidate = (value as Record<string, unknown>)[field];
+
+  return typeof candidate === 'string' ? candidate : null;
+}
+
+function toJoinErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : 'Booking could not be completed';
+
+  if (message.includes('Slot capacity exceeded')) {
+    return 'This slot just filled up. Pick another open slot.';
+  }
+
+  if (message.includes('Slot is not open') || message.includes('Slot not found')) {
+    return 'This slot is no longer available.';
+  }
+
+  if (message.includes('Booking payment is already terminal')) {
+    return 'This booking already has a completed payment attempt.';
+  }
+
+  return message;
+}
+
+function createFakePaymentWebhook(payment: Payment): Record<string, unknown> {
+  return {
+    event: 'checkout.order.completed',
+    payload: {
+      merchantOrderId: payment.phonepe_order_id,
+      state: 'COMPLETED',
+      amount: payment.amount_inr * 100,
+      paymentDetails: [
+        {
+          transactionId: `WEB-FAKE-${payment.id}-${Date.now()}`
+        }
+      ]
+    }
+  };
+}
+
+async function createFakeWebhookAuthorization(): Promise<string> {
+  const credential =
+    import.meta.env.VITE_FAKE_PHONEPE_WEBHOOK_CREDENTIAL ??
+    'local-phonepe-webhook-user:local-phonepe-webhook-password';
+
+  if (globalThis.crypto?.subtle === undefined) {
+    throw new Error('Browser crypto is required for fake payment completion');
+  }
+
+  const bytes = new TextEncoder().encode(credential);
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 function OnboardingScreen(): ReactElement {

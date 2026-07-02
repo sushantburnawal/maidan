@@ -1,4 +1,13 @@
-import type { Activity, ActivityPillar, ActivitySlot, Profile } from '@maidan/shared';
+import type {
+  Activity,
+  ActivityPillar,
+  ActivitySlot,
+  Booking,
+  GroupChat,
+  Payment,
+  PaymentStatus,
+  Profile
+} from '@maidan/shared';
 
 export interface ActivityFairness {
   score: number;
@@ -43,4 +52,36 @@ export interface ActivityVibe {
   people: ActivityVibePerson[];
   shared_interests: ActivityVibeInterest[];
   summary: string;
+}
+
+export interface CreateBookingResponse {
+  booking: Booking;
+  payment_required_next: boolean;
+}
+
+export interface PaymentGatewayOrder {
+  orderId: string;
+  state: string;
+  expireAt: number | null;
+  redirectUrl: string | null;
+  intentPayload: Record<string, unknown> | null;
+  raw: Record<string, unknown>;
+}
+
+export interface InitPaymentResponse {
+  payment: Payment;
+  gateway: PaymentGatewayOrder | null;
+  already_paid: boolean;
+}
+
+export interface PaymentWebhookResponse {
+  received: boolean;
+  applied: boolean;
+  payment: Payment | null;
+  terminal_status: PaymentStatus | 'ignored';
+}
+
+export interface JoinedChatState {
+  activityId: string;
+  chat: GroupChat;
 }
