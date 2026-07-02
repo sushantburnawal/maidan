@@ -13,15 +13,15 @@ import {
   NavLink,
   Route,
   Routes,
-  useLocation,
   useNavigate,
-  useParams
+  useParams,
+  useSearchParams
 } from 'react-router-dom';
 import maplibregl, { type StyleSpecification } from 'maplibre-gl';
 import type { ActivityPillar, GeoPoint } from '@maidan/shared';
 
 import { apiClient, type ReadyResponse } from './lib/apiClient';
-import type { NearbyActivity } from './lib/apiTypes';
+import type { ActivityDetail, ActivityVibe, NearbyActivity, PublicProfile } from './lib/apiTypes';
 import {
   getAuthTokens,
   setAuthTokens,
@@ -146,7 +146,8 @@ function AppShell({ hasTokens }: { hasTokens: boolean }): ReactElement {
             path="/activities"
             element={<Placeholder title="Activities" eyebrow="Hosting / Joined" />}
           />
-          <Route path="/activities/:activityId" element={<ActivityDetailStub />} />
+          <Route path="/activities/:activityId" element={<ActivityDetailScreen />} />
+          <Route path="/activities/:activityId/join" element={<JoinFlowStub />} />
           <Route path="/you" element={<Placeholder title="You" eyebrow="Profile and host mode" />} />
           <Route path="*" element={<Navigate to="/map" replace />} />
         </Routes>
@@ -430,41 +431,329 @@ function MapHome({
   );
 }
 
-function ActivityDetailStub(): ReactElement {
+function ActivityDetailScreen(): ReactElement {
   const navigate = useNavigate();
   const { activityId } = useParams();
-  const location = useLocation();
-  const activity = getActivityFromRouteState(location.state);
+  const [activity, setActivity] = useState<ActivityDetail | null>(null);
+  const [vibe, setVibe] = useState<ActivityVibe | null>(null);
+  const [host, setHost] = useState<PublicProfile | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [followError, setFollowError] = useState<string | null>(null);
+  const [isUpdatingFollow, setIsUpdatingFollow] = useState(false);
+
+  useEffect(() => {
+    if (activityId === undefined) {
+      setError('Missing activity id');
+      setIsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const currentActivityId = activityId;
+
+    async function loadActivityDetail(): Promise<void> {
+      setIsLoading(true);
+      setError(null);
+      setFollowError(null);
+
+      try {
+        const detail = await apiClient.activities.detail<ActivityDetail>(currentActivityId);
+        const [vibeResult, hostProfile] = await Promise.all([
+          apiClient.activities
+            .vibe<ActivityVibe>(currentActivityId)
+            .catch((): ActivityVibe | null => null),
+          apiClient.profiles.public<PublicProfile>(detail.host_id)
+        ]);
+
+        if (!cancelled) {
+          setActivity(detail);
+          setVibe(vibeResult);
+          setHost(hostProfile);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setActivity(null);
+          setVibe(null);
+          setHost(null);
+          setError(loadError instanceof Error ? loadError.message : 'Unable to load activity');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadActivityDetail();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activityId]);
+
+  async function toggleFollow(): Promise<void> {
+    if (host === null || isUpdatingFollow) {
+      return;
+    }
+
+    const wasFollowing = host.is_following === true;
+    const followerDelta = wasFollowing ? -1 : 1;
+    const nextHost = {
+      ...host,
+      is_following: !wasFollowing,
+      follower_count: Math.max(0, host.follower_count + followerDelta)
+    };
+
+    setHost(nextHost);
+    setIsUpdatingFollow(true);
+    setFollowError(null);
+
+    try {
+      if (wasFollowing) {
+        await apiClient.profiles.unfollow<void>(host.id);
+      } else {
+        await apiClient.profiles.follow<void>(host.id);
+      }
+    } catch (followUpdateError) {
+      setHost(host);
+      setFollowError(
+        followUpdateError instanceof Error ? followUpdateError.message : 'Could not update follow'
+      );
+    } finally {
+      setIsUpdatingFollow(false);
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <section className="detail-screen detail-state">
+        <p className="eyebrow">Activity detail</p>
+        <h1>Loading hangout...</h1>
+      </section>
+    );
+  }
+
+  if (error !== null || activity === null) {
+    return (
+      <section className="detail-screen detail-state">
+        <button className="text-button" onClick={() => navigate('/map')} type="button">
+          Back to map
+        </button>
+        <p className="eyebrow">Activity detail</p>
+        <h1>Could not load this hangout</h1>
+        <p className="muted-copy">{error ?? 'The activity was not found.'}</p>
+      </section>
+    );
+  }
+
+  const heroImage = getActivityImage(activity);
 
   return (
-    <section className="detail-stub">
-      <button className="text-button" onClick={() => navigate(-1)} type="button">
-        Back to map
-      </button>
-      <p className="eyebrow">Activity detail</p>
-      <h1>{activity?.title ?? 'Activity'}</h1>
-      <p>{activity?.description ?? `Detail route ready for ${activityId ?? 'this activity'}.`}</p>
-      {activity?.next_open_slot !== null && activity?.next_open_slot !== undefined ? (
-        <div className="detail-stub-slot">
-          Next slot: {new Date(activity.next_open_slot.starts_at).toLocaleString()}
+    <section className="detail-screen">
+      <div className="detail-hero">
+        {heroImage !== null ? (
+          <img
+            alt={heroImage.alt}
+            onError={(event) => {
+              event.currentTarget.style.display = 'none';
+            }}
+            src={heroImage.url}
+          />
+        ) : null}
+        <div className={`detail-hero-fallback detail-hero-${activity.pillar}`}>
+          {pillarInitial(activity.pillar)}
         </div>
-      ) : null}
+        <button className="detail-back" onClick={() => navigate('/map')} type="button">
+          Back
+        </button>
+        <div className="detail-hero-copy">
+          <p className="eyebrow">{activity.pillar} · {activity.category}</p>
+          <h1>{activity.title}</h1>
+          <p>{activity.meeting_point}</p>
+        </div>
+      </div>
+
+      <div className="detail-grid">
+        <article className="detail-main">
+          <p className="detail-description">{activity.description}</p>
+          <section className="detail-section">
+            <div className="section-heading">
+              <p className="eyebrow">Slots</p>
+              <h2>Choose when to join</h2>
+            </div>
+            <div className="slot-list">
+              {activity.upcoming_open_slots.length === 0 ? (
+                <p className="muted-copy">No open slots right now.</p>
+              ) : (
+                activity.upcoming_open_slots.map((slot) => (
+                  <article className="slot-card" key={slot.id}>
+                    <div>
+                      <strong>{formatSlotDateRange(slot.starts_at, slot.ends_at)}</strong>
+                      <span>
+                        {slot.capacity - slot.booked_count} of {slot.capacity} spots open
+                      </span>
+                    </div>
+                    <div className="slot-meta">
+                      <b>{formatInr(activity.base_price_inr)}</b>
+                      <button
+                        className="primary-button"
+                        onClick={() =>
+                          navigate(`/activities/${activity.id}/join?slotId=${slot.id}`, {
+                            state: { activityId: activity.id, slotId: slot.id }
+                          })
+                        }
+                        type="button"
+                      >
+                        Join
+                      </button>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+          </section>
+
+          <section className="detail-section">
+            <div className="section-heading">
+              <p className="eyebrow">Fairness</p>
+              <h2>Price and capacity</h2>
+            </div>
+            <div className="fairness-card">
+              <div className="fairness-row">
+                <span>Fairness meter</span>
+                <strong>{Math.round(activity.fairness.score)}/100</strong>
+              </div>
+              <div className="fairness-track" aria-label={`Fairness score ${activity.fairness.score}`}>
+                <span style={{ width: `${clampPercent(activity.fairness.score)}%` }} />
+              </div>
+              <p>{activity.fairness.suggestion}</p>
+              <small>
+                Capacity {activity.capacity} · Category median{' '}
+                {activity.fairness.category_median_inr === null
+                  ? 'not enough data'
+                  : formatInr(activity.fairness.category_median_inr)}
+              </small>
+            </div>
+          </section>
+
+          <section className="maidan-way">
+            <p className="eyebrow">The Maidan way</p>
+            <p>
+              Show up on time, respect the group pace, and leave the place better than you found
+              it.
+            </p>
+          </section>
+        </article>
+
+        <aside className="detail-side">
+          {host !== null ? (
+            <section className="host-card">
+              <div className="host-row">
+                <div className="avatar">
+                  {host.avatar_url !== null ? (
+                    <img
+                      alt=""
+                      onError={(event) => {
+                        event.currentTarget.style.display = 'none';
+                      }}
+                      src={host.avatar_url}
+                    />
+                  ) : null}
+                  <span>{host.display_name.slice(0, 1).toUpperCase()}</span>
+                </div>
+                <div>
+                  <p className="eyebrow">Host</p>
+                  <h2>{host.display_name}</h2>
+                  <span>{host.follower_count} followers</span>
+                </div>
+              </div>
+              {host.bio !== null ? <p>{host.bio}</p> : null}
+              <div className="interest-row">
+                {host.interests.slice(0, 4).map((interest) => (
+                  <span key={interest}>{interest}</span>
+                ))}
+              </div>
+              <button
+                className={host.is_following === true ? 'secondary-button' : 'primary-button'}
+                disabled={isUpdatingFollow}
+                onClick={() => void toggleFollow()}
+                type="button"
+              >
+                {isUpdatingFollow
+                  ? 'Updating...'
+                  : host.is_following === true
+                    ? 'Following'
+                    : 'Follow'}
+              </button>
+              {followError !== null ? <p className="inline-error">{followError}</p> : null}
+            </section>
+          ) : null}
+
+          <section className="vibe-card">
+            <p className="eyebrow">Vibe</p>
+            {vibe === null ? (
+              <p className="muted-copy">Vibe is settling in.</p>
+            ) : (
+              <>
+                <strong>{vibe.participant_count} people in the circle</strong>
+                <p>{vibe.summary}</p>
+                <div className="people-list">
+                  {vibe.people.map((person) => (
+                    <span key={`${person.role}-${person.display_name}`}>
+                      {person.display_name} · {person.role}
+                    </span>
+                  ))}
+                </div>
+                <div className="interest-row">
+                  {vibe.shared_interests.map((interest) => (
+                    <span key={interest.tag}>
+                      {interest.tag} × {interest.count}
+                    </span>
+                  ))}
+                </div>
+              </>
+            )}
+          </section>
+        </aside>
+      </div>
     </section>
   );
 }
 
-function getActivityFromRouteState(state: unknown): NearbyActivity | undefined {
-  if (typeof state !== 'object' || state === null || !('activity' in state)) {
-    return undefined;
+function JoinFlowStub(): ReactElement {
+  const { activityId } = useParams();
+  const [searchParams] = useSearchParams();
+
+  return (
+    <section className="detail-screen detail-state">
+      <p className="eyebrow">Join</p>
+      <h1>Booking starts here</h1>
+      <p className="muted-copy">
+        W4 will complete booking and payment for activity {activityId} slot{' '}
+        {searchParams.get('slotId') ?? 'selected'}.
+      </p>
+    </section>
+  );
+}
+
+function getActivityImage(activity: ActivityDetail): { url: string; alt: string } | null {
+  for (const item of activity.media) {
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+      continue;
+    }
+
+    const media = item as Record<string, unknown>;
+
+    if (media.type === 'image' && typeof media.url === 'string') {
+      return {
+        url: media.url,
+        alt: typeof media.alt === 'string' ? media.alt : activity.title
+      };
+    }
   }
 
-  const candidate = (state as { activity?: unknown }).activity;
-
-  if (typeof candidate !== 'object' || candidate === null || !('id' in candidate)) {
-    return undefined;
-  }
-
-  return candidate as NearbyActivity;
+  return null;
 }
 
 function pillarInitial(pillar: ActivityPillar): string {
@@ -492,6 +781,38 @@ function formatSlot(activity: NearbyActivity): string {
     day: 'numeric',
     month: 'short'
   });
+}
+
+function formatSlotDateRange(startsAt: string, endsAt: string): string {
+  const start = new Date(startsAt);
+  const end = new Date(endsAt);
+  const date = start.toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    weekday: 'short'
+  });
+  const startTime = start.toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+  const endTime = end.toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+
+  return `${date} · ${startTime} - ${endTime}`;
+}
+
+function formatInr(amount: number): string {
+  return new Intl.NumberFormat('en-IN', {
+    currency: 'INR',
+    maximumFractionDigits: 0,
+    style: 'currency'
+  }).format(amount);
+}
+
+function clampPercent(value: number): number {
+  return Math.min(100, Math.max(0, value));
 }
 
 function OnboardingScreen(): ReactElement {

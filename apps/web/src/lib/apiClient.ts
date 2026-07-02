@@ -118,8 +118,7 @@ export const apiClient = {
       request<TResponse>('/me', { method: 'PATCH', body }),
     becomeHost: <TResponse>(body: CreateHostProfileDto = {}) =>
       request<TResponse>('/me/become-host', { method: 'POST', body }),
-    public: <TResponse>(profileId: string) =>
-      request<TResponse>(`/profiles/${profileId}`, { auth: false }),
+    public: <TResponse>(profileId: string) => request<TResponse>(`/profiles/${profileId}`),
     follow: <TResponse>(profileId: string) =>
       request<TResponse>(`/profiles/${profileId}/follow`, { method: 'POST' }),
     unfollow: <TResponse>(profileId: string) =>
