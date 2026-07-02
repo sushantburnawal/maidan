@@ -320,6 +320,161 @@ h1 {
   background: var(--screen);
 }
 
+.feed-screen {
+  min-height: calc(100vh - 70px);
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  padding: 22px;
+  background: var(--screen);
+}
+
+.feed-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  width: min(760px, 100%);
+  margin: 0 auto;
+}
+
+.feed-tabs {
+  display: flex;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px;
+  background: var(--fill);
+}
+
+.feed-tab {
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.feed-tab-active {
+  background: #fff;
+  color: var(--accent);
+  box-shadow: 0 8px 18px -14px rgba(20, 24, 33, 0.8);
+}
+
+.feed-list {
+  display: grid;
+  gap: 12px;
+  width: min(760px, 100%);
+  margin: 0 auto;
+}
+
+.feed-post,
+.feed-empty {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.feed-post {
+  display: grid;
+  gap: 12px;
+}
+
+.feed-post p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1.5;
+}
+
+.feed-post-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.feed-activity-card {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-left-width: 5px;
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--screen);
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+
+.feed-activity-card span,
+.feed-activity-card small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.feed-activity-card strong {
+  font-size: 18px;
+}
+
+.feed-activity-move {
+  border-left-color: var(--move);
+}
+
+.feed-activity-learn {
+  border-left-color: var(--learn);
+}
+
+.feed-activity-feel {
+  border-left-color: var(--feel);
+}
+
+.feed-empty {
+  display: grid;
+  gap: 8px;
+  width: min(760px, 100%);
+  margin: 0 auto;
+}
+
+.feed-empty h2 {
+  margin: 0;
+}
+
+.feed-loading {
+  width: min(760px, 100%);
+  margin: 0 auto;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.load-more-button {
+  width: min(760px, 100%);
+  justify-self: center;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 13px 16px;
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.load-more-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 .detail-screen {
   min-height: calc(100vh - 70px);
   background: var(--screen);
@@ -853,6 +1008,7 @@ h1 {
 
   .map-screen,
   .placeholder-screen,
+  .feed-screen,
   .detail-screen,
   .join-screen,
   .chat-stub {
@@ -907,5 +1063,14 @@ h1 {
 
   .create-fab {
     bottom: 190px;
+  }
+
+  .feed-screen {
+    padding: 18px 12px;
+  }
+
+  .feed-header {
+    align-items: start;
+    flex-direction: column;
   }
 }

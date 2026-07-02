@@ -6,6 +6,7 @@ import type {
   GroupChat,
   Payment,
   PaymentStatus,
+  Post,
   Profile
 } from '@maidan/shared';
 
@@ -84,4 +85,36 @@ export interface PaymentWebhookResponse {
 export interface JoinedChatState {
   activityId: string;
   chat: GroupChat;
+}
+
+export type ApiPost = Pick<
+  Post,
+  'id' | 'author_id' | 'body' | 'media' | 'linked_activity_id' | 'created_at'
+>;
+
+export interface CompactFeedActivitySlot {
+  id: string;
+  starts_at: string;
+  ends_at: string;
+}
+
+export interface CompactFeedActivityCard {
+  id: string;
+  title: string;
+  pillar: ActivityPillar;
+  next_slot: CompactFeedActivitySlot | null;
+  price: {
+    amount_inr: number;
+    currency: 'INR';
+  };
+  fairness_score: number;
+}
+
+export type FeedPost = ApiPost & {
+  linked_activity: CompactFeedActivityCard | null;
+};
+
+export interface PaginatedFeedResponse {
+  items: FeedPost[];
+  next_cursor: string | null;
 }

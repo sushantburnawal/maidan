@@ -26,9 +26,11 @@ import type {
   ActivityDetail,
   ActivityVibe,
   CreateBookingResponse,
+  FeedPost,
   InitPaymentResponse,
   JoinedChatState,
   NearbyActivity,
+  PaginatedFeedResponse,
   PaymentWebhookResponse,
   PublicProfile
 } from './lib/apiTypes';
@@ -147,7 +149,7 @@ function AppShell({ hasTokens }: { hasTokens: boolean }): ReactElement {
             path="/map"
             element={<MapHome connectionLabel={connectionLabel} realtimeStatus={realtimeStatus} />}
           />
-          <Route path="/feed" element={<Placeholder title="Feed" eyebrow="Following / Discover" />} />
+          <Route path="/feed" element={<FeedScreen />} />
           <Route
             path="/sutradhar"
             element={<Placeholder title="Sutradhar" eyebrow="Grounded suggestions" />}
@@ -439,6 +441,157 @@ function MapHome({
         +
       </button>
     </section>
+  );
+}
+
+type FeedScope = 'following' | 'global';
+
+function FeedScreen(): ReactElement {
+  const navigate = useNavigate();
+  const [scope, setScope] = useState<FeedScope>('following');
+  const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadFeed = useCallback(
+    async ({ cursor, reset }: { cursor?: string | null; reset: boolean }) => {
+      if (reset) {
+        setIsLoading(true);
+        setPosts([]);
+        setNextCursor(null);
+      } else {
+        setIsLoadingMore(true);
+      }
+
+      setError(null);
+
+      try {
+        const response = await apiClient.posts.feed<PaginatedFeedResponse>(
+          scope,
+          cursor ?? undefined
+        );
+
+        setPosts((currentPosts) =>
+          reset ? response.items : appendUniqueFeedPosts(currentPosts, response.items)
+        );
+        setNextCursor(response.next_cursor);
+      } catch (loadError) {
+        setError(loadError instanceof Error ? loadError.message : 'Unable to load feed');
+      } finally {
+        setIsLoading(false);
+        setIsLoadingMore(false);
+      }
+    },
+    [scope]
+  );
+
+  useEffect(() => {
+    void loadFeed({ reset: true });
+  }, [loadFeed]);
+
+  useEffect(() => {
+    return realtimeClient.on('feed:new', () => {
+      void loadFeed({ reset: true });
+    });
+  }, [loadFeed]);
+
+  return (
+    <section className="feed-screen">
+      <header className="feed-header">
+        <div>
+          <p className="eyebrow">Feed</p>
+          <h1>{scope === 'following' ? 'Your circle' : 'Discover'}</h1>
+        </div>
+        <div className="feed-tabs" aria-label="Feed scope">
+          <button
+            className={scope === 'following' ? 'feed-tab feed-tab-active' : 'feed-tab'}
+            onClick={() => setScope('following')}
+            type="button"
+          >
+            Following
+          </button>
+          <button
+            className={scope === 'global' ? 'feed-tab feed-tab-active' : 'feed-tab'}
+            onClick={() => setScope('global')}
+            type="button"
+          >
+            Discover
+          </button>
+        </div>
+      </header>
+
+      {error !== null ? <p className="inline-error">{error}</p> : null}
+      {isLoading && posts.length === 0 ? <p className="feed-loading">Loading feed...</p> : null}
+      {!isLoading && posts.length === 0 && error === null ? (
+        <div className="feed-empty">
+          <p className="eyebrow">{scope === 'following' ? 'Following' : 'Discover'}</p>
+          <h2>No posts yet</h2>
+          <p className="muted-copy">
+            {scope === 'following'
+              ? 'Follow a host to see their activity updates here.'
+              : 'Fresh activity updates will appear here.'}
+          </p>
+        </div>
+      ) : null}
+
+      <div className="feed-list">
+        {posts.map((post) => (
+          <FeedPostCard
+            key={post.id}
+            post={post}
+            onOpenActivity={(activityId) => navigate(`/activities/${activityId}`)}
+          />
+        ))}
+      </div>
+
+      {nextCursor !== null ? (
+        <button
+          className="load-more-button"
+          disabled={isLoadingMore}
+          onClick={() => void loadFeed({ cursor: nextCursor, reset: false })}
+          type="button"
+        >
+          {isLoadingMore ? 'Loading...' : 'Load more'}
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
+function FeedPostCard({
+  onOpenActivity,
+  post
+}: {
+  onOpenActivity: (activityId: string) => void;
+  post: FeedPost;
+}): ReactElement {
+  const linkedActivity = post.linked_activity;
+
+  return (
+    <article className="feed-post">
+      <div className="feed-post-meta">
+        <span>Host {shortId(post.author_id)}</span>
+        <time dateTime={post.created_at}>{formatFeedDate(post.created_at)}</time>
+      </div>
+      <p>{post.body}</p>
+      {linkedActivity !== null ? (
+        <button
+          className={`feed-activity-card feed-activity-${linkedActivity.pillar}`}
+          onClick={() => onOpenActivity(linkedActivity.id)}
+          type="button"
+        >
+          <span>{formatPillarLabel(linkedActivity.pillar)}</span>
+          <strong>{linkedActivity.title}</strong>
+          <small>
+            {formatFeedActivitySlot(linkedActivity.next_slot)} ·{' '}
+            {formatInr(linkedActivity.price.amount_inr)}
+          </small>
+          <small>Fairness {Math.round(linkedActivity.fairness_score)}/100</small>
+        </button>
+      ) : null}
+    </article>
   );
 }
 
@@ -1082,6 +1235,46 @@ function formatInr(amount: number): string {
     maximumFractionDigits: 0,
     style: 'currency'
   }).format(amount);
+}
+
+function appendUniqueFeedPosts(currentPosts: FeedPost[], nextPosts: FeedPost[]): FeedPost[] {
+  const seenIds = new Set(currentPosts.map((post) => post.id));
+  const uniqueNextPosts = nextPosts.filter((post) => !seenIds.has(post.id));
+
+  return [...currentPosts, ...uniqueNextPosts];
+}
+
+function formatFeedDate(createdAt: string): string {
+  const date = new Date(createdAt);
+
+  if (Number.isNaN(date.getTime())) {
+    return createdAt;
+  }
+
+  return date.toLocaleString(undefined, {
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    month: 'short'
+  });
+}
+
+function formatFeedActivitySlot(
+  slot: NonNullable<FeedPost['linked_activity']>['next_slot']
+): string {
+  if (slot === null) {
+    return 'Next slot opening soon';
+  }
+
+  return formatSlotDateRange(slot.starts_at, slot.ends_at);
+}
+
+function formatPillarLabel(pillar: ActivityPillar): string {
+  return `${pillar.slice(0, 1).toUpperCase()}${pillar.slice(1)}`;
+}
+
+function shortId(id: string): string {
+  return id.slice(0, 8);
 }
 
 function clampPercent(value: number): number {
