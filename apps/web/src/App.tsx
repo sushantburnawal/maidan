@@ -432,6 +432,7 @@ function MapHome({
         <div className="nearby-list">
           {activities.slice(0, 4).map((activity) => (
             <button
+              data-testid="nearby-activity"
               key={activity.id}
               onClick={() => navigate(`/activities/${activity.id}`, { state: { activity } })}
               type="button"
@@ -591,6 +592,7 @@ function FeedPostCard({
       {linkedActivity !== null ? (
         <button
           className={`feed-activity-card feed-activity-${linkedActivity.pillar}`}
+          data-testid="feed-linked-activity"
           onClick={() => onOpenActivity(linkedActivity.id)}
           type="button"
         >
@@ -1936,6 +1938,7 @@ function ActivityDetailScreen(): ReactElement {
                       <b>{formatInr(activity.base_price_inr)}</b>
                       <button
                         className="primary-button"
+                        data-testid="slot-join-button"
                         onClick={() =>
                           navigate(`/activities/${activity.id}/join?slotId=${slot.id}`, {
                             state: { activityId: activity.id, slotId: slot.id }
@@ -2014,6 +2017,7 @@ function ActivityDetailScreen(): ReactElement {
               </div>
               <button
                 className={host.is_following === true ? 'secondary-button' : 'primary-button'}
+                data-testid="host-follow-button"
                 disabled={isUpdatingFollow}
                 onClick={() => void toggleFollow()}
                 type="button"
@@ -2281,6 +2285,7 @@ function JoinFlowScreen(): ReactElement {
           {step === 'ready' || step === 'error' || step === 'booking' ? (
             <button
               className="primary-button"
+              data-testid="book-spot-button"
               disabled={step === 'booking'}
               onClick={() => void bookSelectedSlot()}
               type="button"
@@ -2289,7 +2294,12 @@ function JoinFlowScreen(): ReactElement {
             </button>
           ) : null}
           {step === 'payment' ? (
-            <button className="primary-button" onClick={() => void completeFakePayment()} type="button">
+            <button
+              className="primary-button"
+              data-testid="complete-fake-payment-button"
+              onClick={() => void completeFakePayment()}
+              type="button"
+            >
               Complete payment (fake)
             </button>
           ) : null}
@@ -2610,7 +2620,7 @@ function ChatRoomScreen(): ReactElement {
 
       {error !== null ? <p className="inline-error">{error}</p> : null}
 
-      <div className="chat-message-list" aria-live="polite">
+      <div className="chat-message-list" data-testid="chat-message-list" aria-live="polite">
         {nextCursor !== null ? (
           <button
             className="load-more-button"
@@ -2648,6 +2658,7 @@ function ChatRoomScreen(): ReactElement {
       <form className="chat-compose" onSubmit={(event) => void sendChatMessage(event)}>
         <label htmlFor="chat-message">Message</label>
         <textarea
+          data-testid="chat-message-input"
           id="chat-message"
           onChange={(event) => updateDraft(event.currentTarget.value)}
           placeholder="Write to the group"
@@ -2656,6 +2667,7 @@ function ChatRoomScreen(): ReactElement {
         />
         <button
           className="primary-button"
+          data-testid="send-chat-message-button"
           disabled={isSending || !hasJoinedRoom || draft.trim().length === 0}
           type="submit"
         >
