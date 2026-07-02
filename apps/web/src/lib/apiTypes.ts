@@ -3,7 +3,10 @@ import type {
   ActivityPillar,
   ActivitySlot,
   Booking,
+  FollowProfileSummaryResponse,
+  FollowsPageResponse,
   GroupChat,
+  HostProfile,
   Message,
   Payment,
   PaymentStatus,
@@ -39,6 +42,17 @@ export type PublicProfile = Omit<Profile, 'phone' | 'created_at' | 'updated_at'>
   following_count: number;
   is_following?: boolean;
 };
+
+export type PrivateProfile = Profile & {
+  follower_count: number;
+  following_count: number;
+};
+
+export type HostProfileRecord = HostProfile;
+
+export type FollowProfileSummary = FollowProfileSummaryResponse;
+
+export type PaginatedFollowsResponse = FollowsPageResponse;
 
 export interface ActivityVibePerson {
   display_name: string;

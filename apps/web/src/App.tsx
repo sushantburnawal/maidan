@@ -29,13 +29,17 @@ import type {
   ChatMessage,
   CreateBookingResponse,
   FeedPost,
+  FollowProfileSummary,
   HostedActivity,
+  HostProfileRecord,
   InitPaymentResponse,
   JoinedChatState,
   NearbyActivity,
   PaginatedFeedResponse,
+  PaginatedFollowsResponse,
   PaginatedMessagesResponse,
   PaymentWebhookResponse,
+  PrivateProfile,
   PublicProfile
 } from './lib/apiTypes';
 import {
@@ -166,7 +170,8 @@ function AppShell({ hasTokens }: { hasTokens: boolean }): ReactElement {
           <Route path="/activities/:activityId/join" element={<JoinFlowScreen />} />
           <Route path="/activities/:activityId/manage" element={<ManageActivityScreen />} />
           <Route path="/chats/:chatId" element={<ChatRoomScreen />} />
-          <Route path="/you" element={<Placeholder title="You" eyebrow="Profile and host mode" />} />
+          <Route path="/profiles/:profileId" element={<ProfileScreen />} />
+          <Route path="/you" element={<YouScreen />} />
           <Route path="*" element={<Navigate to="/map" replace />} />
         </Routes>
       </main>
@@ -1138,6 +1143,462 @@ function ManageActivityScreen(): ReactElement {
   );
 }
 
+type FollowListKind = 'followers' | 'following';
+
+function ProfileScreen(): ReactElement {
+  const navigate = useNavigate();
+  const { profileId } = useParams();
+  const currentProfileId = getCurrentProfileId();
+  const [profile, setProfile] = useState<PublicProfile | null>(null);
+  const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [postsCursor, setPostsCursor] = useState<string | null>(null);
+  const [followListKind, setFollowListKind] = useState<FollowListKind>('followers');
+  const [followRows, setFollowRows] = useState<FollowProfileSummary[]>([]);
+  const [followCursor, setFollowCursor] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isUpdatingFollow, setIsUpdatingFollow] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadProfile = useCallback(async () => {
+    if (profileId === undefined) {
+      setError('Missing profile id');
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const [publicProfile, profilePosts] = await Promise.all([
+        apiClient.profiles.public<PublicProfile>(profileId),
+        apiClient.profiles.posts<PaginatedFeedResponse>(profileId)
+      ]);
+
+      setProfile(publicProfile);
+      setPosts(profilePosts.items);
+      setPostsCursor(profilePosts.next_cursor);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Unable to load profile');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [profileId]);
+
+  const loadFollowRows = useCallback(
+    async ({ cursor, reset }: { cursor?: string | null; reset: boolean }) => {
+      if (profileId === undefined) {
+        return;
+      }
+
+      const response =
+        followListKind === 'followers'
+          ? await apiClient.profiles.followers<PaginatedFollowsResponse>(
+              profileId,
+              cursor ?? undefined
+            )
+          : await apiClient.profiles.following<PaginatedFollowsResponse>(
+              profileId,
+              cursor ?? undefined
+            );
+
+      setFollowRows((currentRows) =>
+        reset ? response.items : appendUniqueFollowRows(currentRows, response.items)
+      );
+      setFollowCursor(response.next_cursor);
+    },
+    [followListKind, profileId]
+  );
+
+  useEffect(() => {
+    void loadProfile();
+  }, [loadProfile]);
+
+  useEffect(() => {
+    setFollowRows([]);
+    setFollowCursor(null);
+    void loadFollowRows({ reset: true });
+  }, [loadFollowRows]);
+
+  async function toggleProfileFollow(): Promise<void> {
+    if (profile === null || profile.id === currentProfileId || isUpdatingFollow) {
+      return;
+    }
+
+    const wasFollowing = profile.is_following === true;
+    setProfile({
+      ...profile,
+      is_following: !wasFollowing,
+      follower_count: Math.max(0, profile.follower_count + (wasFollowing ? -1 : 1))
+    });
+    setIsUpdatingFollow(true);
+    setError(null);
+
+    try {
+      if (wasFollowing) {
+        await apiClient.profiles.unfollow<void>(profile.id);
+      } else {
+        await apiClient.profiles.follow<void>(profile.id);
+      }
+    } catch (followError) {
+      setProfile(profile);
+      setError(followError instanceof Error ? followError.message : 'Unable to update follow');
+    } finally {
+      setIsUpdatingFollow(false);
+    }
+  }
+
+  async function toggleRowFollow(row: FollowProfileSummary): Promise<void> {
+    if (row.id === currentProfileId) {
+      return;
+    }
+
+    const wasFollowing = row.is_following === true;
+    setFollowRows((currentRows) =>
+      currentRows.map((currentRow) =>
+        currentRow.id === row.id ? { ...currentRow, is_following: !wasFollowing } : currentRow
+      )
+    );
+
+    try {
+      if (wasFollowing) {
+        await apiClient.profiles.unfollow<void>(row.id);
+      } else {
+        await apiClient.profiles.follow<void>(row.id);
+      }
+    } catch {
+      setFollowRows((currentRows) =>
+        currentRows.map((currentRow) =>
+          currentRow.id === row.id ? { ...currentRow, is_following: wasFollowing } : currentRow
+        )
+      );
+    }
+  }
+
+  async function loadMorePosts(): Promise<void> {
+    if (profileId === undefined || postsCursor === null) {
+      return;
+    }
+
+    const response = await apiClient.profiles.posts<PaginatedFeedResponse>(profileId, postsCursor);
+    setPosts((currentPosts) => appendUniqueFeedPosts(currentPosts, response.items));
+    setPostsCursor(response.next_cursor);
+  }
+
+  if (isLoading) {
+    return (
+      <section className="profile-screen profile-state">
+        <p className="eyebrow">Profile</p>
+        <h1>Loading profile...</h1>
+      </section>
+    );
+  }
+
+  if (profile === null) {
+    return (
+      <section className="profile-screen profile-state">
+        <button className="text-button" onClick={() => navigate(-1)} type="button">
+          Back
+        </button>
+        <p className="eyebrow">Profile</p>
+        <h1>Could not load profile</h1>
+        <p className="muted-copy">{error ?? 'The profile was not found.'}</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="profile-screen">
+      <header className="profile-header">
+        <button className="text-button" onClick={() => navigate(-1)} type="button">
+          Back
+        </button>
+        <div className="profile-identity">
+          <div className="avatar">
+            {profile.avatar_url !== null ? (
+              <img
+                alt=""
+                onError={(event) => {
+                  event.currentTarget.style.display = 'none';
+                }}
+                src={profile.avatar_url}
+              />
+            ) : null}
+            <span>{profile.display_name.slice(0, 1).toUpperCase()}</span>
+          </div>
+          <div>
+            <p className="eyebrow">Profile</p>
+            <h1>{profile.display_name}</h1>
+            <p className="profile-counts">
+              {profile.follower_count} followers · {profile.following_count} following
+            </p>
+          </div>
+        </div>
+        {profile.id !== currentProfileId ? (
+          <button
+            className={profile.is_following === true ? 'secondary-button' : 'primary-button'}
+            disabled={isUpdatingFollow}
+            onClick={() => void toggleProfileFollow()}
+            type="button"
+          >
+            {profile.is_following === true ? 'Following' : 'Follow'}
+          </button>
+        ) : null}
+      </header>
+
+      {error !== null ? <p className="inline-error">{error}</p> : null}
+
+      <div className="profile-grid">
+        <section className="profile-panel">
+          <p className="eyebrow">About</p>
+          {profile.bio !== null ? <p>{profile.bio}</p> : <p className="muted-copy">No bio yet.</p>}
+          <div className="interest-row">
+            {profile.interests.map((interest) => (
+              <span key={interest}>{interest}</span>
+            ))}
+          </div>
+        </section>
+
+        <section className="profile-panel">
+          <div className="feed-tabs">
+            <button
+              className={followListKind === 'followers' ? 'feed-tab feed-tab-active' : 'feed-tab'}
+              onClick={() => setFollowListKind('followers')}
+              type="button"
+            >
+              Followers
+            </button>
+            <button
+              className={followListKind === 'following' ? 'feed-tab feed-tab-active' : 'feed-tab'}
+              onClick={() => setFollowListKind('following')}
+              type="button"
+            >
+              Following
+            </button>
+          </div>
+          <div className="follow-list">
+            {followRows.length === 0 ? (
+              <p className="muted-copy">No {followListKind} yet.</p>
+            ) : (
+              followRows.map((row) => (
+                <article className="follow-row" key={row.id}>
+                  <button
+                    className="text-button"
+                    onClick={() => navigate(`/profiles/${row.id}`)}
+                    type="button"
+                  >
+                    {row.display_name}
+                  </button>
+                  {row.id !== currentProfileId ? (
+                    <button
+                      className={row.is_following === true ? 'secondary-button' : 'primary-button'}
+                      onClick={() => void toggleRowFollow(row)}
+                      type="button"
+                    >
+                      {row.is_following === true ? 'Following' : 'Follow'}
+                    </button>
+                  ) : null}
+                </article>
+              ))
+            )}
+          </div>
+          {followCursor !== null ? (
+            <button
+              className="load-more-button"
+              onClick={() => void loadFollowRows({ cursor: followCursor, reset: false })}
+              type="button"
+            >
+              Load more
+            </button>
+          ) : null}
+        </section>
+
+        <section className="profile-panel profile-posts">
+          <p className="eyebrow">Posts</p>
+          <div className="feed-list">
+            {posts.length === 0 ? (
+              <p className="muted-copy">No posts yet.</p>
+            ) : (
+              posts.map((post) => (
+                <FeedPostCard
+                  key={post.id}
+                  post={post}
+                  onOpenActivity={(activityId) => navigate(`/activities/${activityId}`)}
+                />
+              ))
+            )}
+          </div>
+          {postsCursor !== null ? (
+            <button className="load-more-button" onClick={() => void loadMorePosts()} type="button">
+              Load more posts
+            </button>
+          ) : null}
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function YouScreen(): ReactElement {
+  const navigate = useNavigate();
+  const [profile, setProfile] = useState<PrivateProfile | null>(null);
+  const [hostProfile, setHostProfile] = useState<HostProfileRecord | null>(null);
+  const [displayName, setDisplayName] = useState('');
+  const [bio, setBio] = useState('');
+  const [interests, setInterests] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadMe = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const me = await apiClient.profiles.me<PrivateProfile>();
+      setProfile(me);
+      setDisplayName(me.display_name);
+      setBio(me.bio ?? '');
+      setInterests(me.interests.join(', '));
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Unable to load your profile');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadMe();
+  }, [loadMe]);
+
+  async function saveProfile(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+
+    if (profile === null) {
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const updated = await apiClient.profiles.updateMe<
+        Omit<PrivateProfile, 'follower_count' | 'following_count'>
+      >({
+        displayName: displayName.trim(),
+        bio: bio.trim().length === 0 ? null : bio.trim(),
+        interests: parseInterests(interests)
+      });
+
+      setProfile({ ...profile, ...updated });
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Unable to save profile');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function becomeHost(): Promise<void> {
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const host = await apiClient.profiles.becomeHost<HostProfileRecord>();
+      setHostProfile(host);
+    } catch (hostError) {
+      setError(hostError instanceof Error ? hostError.message : 'Unable to enable host mode');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <section className="you-screen profile-state">
+        <p className="eyebrow">You</p>
+        <h1>Loading your profile...</h1>
+      </section>
+    );
+  }
+
+  if (profile === null) {
+    return (
+      <section className="you-screen profile-state">
+        <p className="eyebrow">You</p>
+        <h1>Could not load profile</h1>
+        <p className="muted-copy">{error ?? 'Try signing in again.'}</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="you-screen">
+      <header className="profile-header">
+        <div className="profile-identity">
+          <div className="avatar">
+            {profile.avatar_url !== null ? (
+              <img
+                alt=""
+                onError={(event) => {
+                  event.currentTarget.style.display = 'none';
+                }}
+                src={profile.avatar_url}
+              />
+            ) : null}
+            <span>{profile.display_name.slice(0, 1).toUpperCase()}</span>
+          </div>
+          <div>
+            <p className="eyebrow">You</p>
+            <h1>{profile.display_name}</h1>
+            <p className="profile-counts">
+              {profile.follower_count} followers · {profile.following_count} following
+            </p>
+          </div>
+        </div>
+        <button className="secondary-button" onClick={() => navigate(`/profiles/${profile.id}`)} type="button">
+          Public profile
+        </button>
+      </header>
+
+      {error !== null ? <p className="inline-error">{error}</p> : null}
+
+      <div className="you-grid">
+        <form className="profile-panel profile-form" onSubmit={(event) => void saveProfile(event)}>
+          <p className="eyebrow">Profile</p>
+          <label>
+            Display name
+            <input value={displayName} onChange={(event) => setDisplayName(event.currentTarget.value)} />
+          </label>
+          <label>
+            Bio
+            <textarea rows={5} value={bio} onChange={(event) => setBio(event.currentTarget.value)} />
+          </label>
+          <label>
+            Interests
+            <input value={interests} onChange={(event) => setInterests(event.currentTarget.value)} />
+          </label>
+          <button className="primary-button" disabled={isSaving} type="submit">
+            Save profile
+          </button>
+        </form>
+
+        <section className="profile-panel">
+          <p className="eyebrow">Host mode</p>
+          <p className="muted-copy">
+            Become a host when you are ready to publish real capacity and manage explorers.
+          </p>
+          <button className="secondary-button" disabled={isSaving} onClick={() => void becomeHost()} type="button">
+            Become host
+          </button>
+          {hostProfile !== null ? (
+            <p className="inline-success">Host mode enabled · {shortId(hostProfile.id)}</p>
+          ) : null}
+        </section>
+      </div>
+    </section>
+  );
+}
+
 function ActivityDetailScreen(): ReactElement {
   const navigate = useNavigate();
   const { activityId } = useParams();
@@ -1390,8 +1851,15 @@ function ActivityDetailScreen(): ReactElement {
                 {isUpdatingFollow
                   ? 'Updating...'
                   : host.is_following === true
-                    ? 'Following'
-                    : 'Follow'}
+                  ? 'Following'
+                  : 'Follow'}
+              </button>
+              <button
+                className="secondary-button"
+                onClick={() => navigate(`/profiles/${host.id}`)}
+                type="button"
+              >
+                View profile
               </button>
               {followError !== null ? <p className="inline-error">{followError}</p> : null}
             </section>
@@ -2296,6 +2764,23 @@ function appendUniqueFeedPosts(currentPosts: FeedPost[], nextPosts: FeedPost[]):
   const uniqueNextPosts = nextPosts.filter((post) => !seenIds.has(post.id));
 
   return [...currentPosts, ...uniqueNextPosts];
+}
+
+function appendUniqueFollowRows(
+  currentRows: FollowProfileSummary[],
+  nextRows: FollowProfileSummary[]
+): FollowProfileSummary[] {
+  const seenIds = new Set(currentRows.map((row) => row.id));
+  const uniqueNextRows = nextRows.filter((row) => !seenIds.has(row.id));
+
+  return [...currentRows, ...uniqueNextRows];
+}
+
+function parseInterests(value: string): string[] {
+  return value
+    .split(',')
+    .map((interest) => interest.trim())
+    .filter((interest) => interest.length > 0);
 }
 
 function formatFeedDate(createdAt: string): string {

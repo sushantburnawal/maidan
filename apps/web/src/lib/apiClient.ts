@@ -132,12 +132,10 @@ export const apiClient = {
       request<TResponse>(`/profiles/${profileId}/follow`, { method: 'DELETE' }),
     followers: <TResponse>(profileId: string, cursor?: string) =>
       request<TResponse>(`/profiles/${profileId}/followers`, {
-        auth: false,
         query: { cursor }
       }),
     following: <TResponse>(profileId: string, cursor?: string) =>
       request<TResponse>(`/profiles/${profileId}/following`, {
-        auth: false,
         query: { cursor }
       }),
     posts: <TResponse>(profileId: string, cursor?: string) =>
