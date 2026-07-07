@@ -8,8 +8,8 @@ as $$
   select (
     substr(hash, 1, 8) || '-' ||
     substr(hash, 9, 4) || '-' ||
-    substr(hash, 13, 4) || '-' ||
-    substr(hash, 17, 4) || '-' ||
+    '4' || substr(hash, 14, 3) || '-' ||
+    '8' || substr(hash, 18, 3) || '-' ||
     substr(hash, 21, 12)
   )::uuid
   from (select md5('maidan-seed:' || _key) as hash) hashed;

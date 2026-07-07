@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maidan — Full Prototype</title>
+<style>
+  :root{
+    --paper:#E6E8EC;--screen:#FBFCFD;--fill:#EDEFF3;--fill-2:#E2E5EA;
+    --line:#C7CDD6;--line-strong:#AEB6C2;--ink:#1A1D24;--muted:#727A87;--faint:#9AA2AE;
+    --accent:#3144E6;--accent-soft:#E5E8FF;
+    --body:#1B9A57;--body-soft:#DCF1E6;--mind:#D9871A;--mind-soft:#FBEBD3;--soul:#7A4DE6;--soul-soft:#EDE6FF;
+    --ai:#6B4DE6;--ai-soft:#F1ECFF;--host:#12141A;
+    --ok:#1B8A5A;--ok-soft:#DEF3E9;--warn:#B9791C;--warn-soft:#FBE9D6;--star:#E0A11A;
+    --map:#ECEAE3;--road:#FCFBF8;--park:#D9E8CF;--water:#CFE0EC;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}html,body{margin:0;padding:0}
+  body{background:var(--paper);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;line-height:1.45}
+
+  .topbar{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;padding:18px 26px;border-bottom:1px solid var(--line);background:var(--paper);position:sticky;top:0;z-index:50}
+  .brandmark{font-weight:800;font-size:20px;letter-spacing:-0.02em}.brandmark span{color:var(--accent)}
+  .kicker{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .legend{margin-left:auto;display:flex;gap:14px;font-family:var(--mono);font-size:10.5px;color:var(--muted);flex-wrap:wrap}
+  .legend i{font-style:normal;display:inline-flex;align-items:center;gap:5px}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+
+  .stage{display:grid;grid-template-columns:minmax(330px,380px) 1fr;gap:36px;align-items:start;max-width:1180px;margin:0 auto;padding:34px 26px 80px}
+  .device-wrap{position:sticky;top:86px;display:flex;justify-content:center}
+  .phone{width:360px;height:740px;background:#0c0e12;border-radius:42px;padding:11px;box-shadow:0 22px 50px -18px rgba(20,24,33,.45),0 2px 0 rgba(255,255,255,.4) inset}
+  .phone-screen{position:relative;width:100%;height:100%;background:var(--screen);border-radius:32px;overflow:hidden;display:flex;flex-direction:column}
+  .statusbar{height:30px;flex:0 0 30px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-family:var(--mono);font-size:10.5px;background:var(--screen);z-index:30}
+  .statusbar.dark{background:var(--host);color:#fff}
+  .notch{position:absolute;top:9px;left:50%;transform:translateX(-50%);width:96px;height:20px;background:#0c0e12;border-radius:0 0 14px 14px;z-index:40}
+  .view{flex:1;overflow-y:auto;overflow-x:hidden}.view::-webkit-scrollbar{width:0}
+  .screen{display:none}.screen.active{display:block;animation:fade .2s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.screen.active{animation:none}}
+
+  /* atoms */
+  .tag{font-family:var(--mono);font-size:9px;letter-spacing:.05em;text-transform:uppercase;padding:3px 7px;border-radius:6px;background:var(--fill-2);color:var(--muted);font-weight:700;display:inline-flex;align-items:center;gap:5px}
+  .tag .k{width:8px;height:8px;border-radius:50%}
+  .tag.body{background:var(--body-soft);color:var(--body)}.tag.body .k{background:var(--body)}
+  .tag.mind{background:var(--mind-soft);color:#9c6411}.tag.mind .k{background:var(--mind)}
+  .tag.soul{background:var(--soul-soft);color:var(--soul)}.tag.soul .k{background:var(--soul)}
+  .tag.live{background:var(--ok-soft);color:var(--ok)}.tag.draft{background:var(--fill-2);color:var(--muted)}.tag.spots{background:var(--warn-soft);color:var(--warn)}
+  .badge{font-family:var(--mono);font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:5px;font-weight:800}
+  .badge.host{background:var(--host);color:#fff}.badge.exp{background:var(--accent-soft);color:var(--accent)}
+  .btn{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;border:none;border-radius:12px;padding:13px;font:inherit;font-weight:700;font-size:13.5px;cursor:pointer;background:var(--accent);color:#fff}
+  .btn.host{background:var(--host)}.btn.ai{background:var(--ai)}
+  .btn.ghost{background:var(--screen);color:var(--accent);border:1.5px solid var(--accent)}
+  .btn.ghost.host{color:var(--host);border-color:var(--host)}.btn.ghost.mut{color:var(--muted);border-color:var(--line)}
+  .stack{padding:0 16px;display:flex;flex-direction:column;gap:9px}
+  .sectlabel{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:16px 16px 6px;display:flex;justify-content:space-between;align-items:center}
+  .sectlabel a{color:var(--accent);text-decoration:none;font-weight:600;letter-spacing:0;text-transform:none;font-family:var(--sans);font-size:12px;cursor:pointer}
+  .h2{font-size:18px;margin:6px 16px 2px;letter-spacing:-0.01em}
+  .sub16{color:var(--muted);font-size:12.5px;margin:0 16px 6px}
+  .backhd{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid var(--line)}
+  .backhd .x{font-size:15px;font-weight:700;cursor:pointer;color:var(--muted)}
+  .backhd b{font-size:15px}.backhd .share{color:var(--accent);font-weight:800;font-size:14px;cursor:pointer}
+  .followbtn{border:1.5px solid var(--accent);background:var(--accent);color:#fff;font:inherit;font-weight:700;font-size:11.5px;padding:6px 14px;border-radius:999px;cursor:pointer;white-space:nowrap}
+  .followbtn.on{background:#fff;color:var(--muted);border-color:var(--line)}
+  .stars{display:inline-flex;gap:4px}.stars span{font-size:21px;color:var(--line-strong);cursor:pointer;line-height:1}.stars span.on{color:var(--star)}
+  .fineprint{font-size:11px;color:var(--muted);margin:8px 16px;text-align:center}
+
+  /* community values — the 'Maidan way' motif + fair-pricing meter */
+  .creed{display:flex;gap:11px;margin:12px 16px;padding:12px 13px;border-radius:13px;background:#F4EFE8;border:1px solid #E5DBCC}
+  .creed .ce{font-size:17px;flex:0 0 auto;line-height:1.3}
+  .creed b{font-size:9.5px;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;color:#9A6F45;display:block;margin-bottom:3px}
+  .creed p{margin:0;font-size:12px;color:var(--ink);line-height:1.5}
+  .creed p em{font-style:normal;font-weight:700}
+  .fair{margin:8px 16px 2px}
+  .fair .bar{height:9px;border-radius:999px;position:relative;background:linear-gradient(90deg,var(--body) 0 30%,var(--body-soft) 30% 58%,var(--mind-soft) 58% 80%,var(--warn-soft) 80% 100%)}
+  .fair .mark{position:absolute;top:-4px;width:3px;height:17px;border-radius:2px;background:var(--ink)}
+  .fair .lab{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:6px;text-transform:uppercase;letter-spacing:.05em}
+
+  /* mode switch */
+  .modebar{display:flex;align-items:center;gap:10px;padding:12px 16px}
+  .modebar.dark{background:var(--host);color:#fff}
+  .modeswitch{display:flex;background:var(--fill);border-radius:999px;padding:3px}
+  .modebar.dark .modeswitch{background:rgba(255,255,255,.12)}
+  .modeswitch button{border:none;background:none;font:inherit;font-weight:700;font-size:12px;padding:7px 15px;border-radius:999px;cursor:pointer;color:var(--muted)}
+  .modebar.dark .modeswitch button{color:rgba(255,255,255,.6)}
+  .modeswitch button.on{background:#fff;color:var(--ink)}
+  .modebar .uav{margin-left:auto;width:30px;height:30px;border-radius:50%;background:var(--fill-2);display:grid;place-items:center;font-size:10px;font-weight:800;color:var(--muted)}
+  .modebar.dark .uav{background:rgba(255,255,255,.15);color:#fff}
+
+  /* ---- MAP ---- */
+  /* phone 740 - padding 22 - statusbar 30 - nav 62 = 626; the map fills the view (which is not a flex parent here) */
+  .screen[data-screen="map"]{height:100%}
+  .maparea{position:relative;height:calc(740px - 22px - 30px - 62px);overflow:hidden}
+  .map{position:absolute;inset:0;background:
+    radial-gradient(ellipse 95px 78px at 20% 26%, var(--park) 0 99%, transparent 100%),
+    radial-gradient(ellipse 60px 90px at 74% 72%, var(--park) 0 99%, transparent 100%),
+    radial-gradient(ellipse 130px 70px at 92% 12%, var(--water) 0 99%, transparent 100%),
+    repeating-linear-gradient(0deg, transparent 0 47px, var(--road) 47px 51px),
+    repeating-linear-gradient(90deg, transparent 0 55px, var(--road) 55px 59px), var(--map)}
+  .map::before{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 38%,var(--road) 38% 41%,transparent 41%),linear-gradient(28deg,transparent 60%,var(--road) 60% 62.5%,transparent 62.5%);opacity:.9}
+  .maplabel{position:absolute;font-family:var(--mono);font-size:9px;color:#A9A79C;letter-spacing:.05em;text-transform:uppercase;pointer-events:none}
+  .pin{position:absolute;transform:translate(-50%,-100%);cursor:pointer;z-index:10;transition:transform .18s,opacity .18s}
+  .pin .head{width:30px;height:30px;border-radius:50% 50% 50% 8px;transform:rotate(45deg);display:grid;place-items:center;box-shadow:0 4px 9px -3px rgba(20,24,33,.5);border:2px solid #fff}
+  .pin .head span{transform:rotate(-45deg);font-size:14px;line-height:1}
+  .pin.body .head{background:var(--body)}.pin.mind .head{background:var(--mind)}.pin.soul .head{background:var(--soul)}
+  .pin.sel{transform:translate(-50%,-100%) scale(1.3);z-index:20}.pin.hide{opacity:0;pointer-events:none;transform:translate(-50%,-100%) scale(.4)}
+  .cluster{position:absolute;transform:translate(-50%,-50%);width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.92);border:2px solid var(--line-strong);display:grid;place-items:center;font-weight:800;font-size:13px;z-index:9;cursor:pointer;box-shadow:0 4px 10px -3px rgba(20,24,33,.4)}
+  .youdot{position:absolute;left:46%;top:54%;transform:translate(-50%,-50%);width:16px;height:16px;border-radius:50%;background:var(--accent);border:3px solid #fff;z-index:8;box-shadow:0 0 0 6px rgba(49,68,230,.18)}
+  .topfloat{position:absolute;top:8px;left:10px;right:10px;z-index:25}
+  .searchbar{display:flex;align-items:center;gap:9px;background:#fff;border:1px solid var(--line);border-radius:13px;padding:11px 13px;box-shadow:0 6px 16px -8px rgba(20,24,33,.35)}
+  .searchbar .b{font-weight:800;font-size:14px}.searchbar .b span{color:var(--accent)}
+  .searchbar .ph{color:var(--faint);font-size:12px;border-left:1px solid var(--line);padding-left:9px;flex:1}
+  .searchbar .uav{width:26px;height:26px;border-radius:50%;background:var(--fill-2);display:grid;place-items:center;font-size:9px;font-weight:800;color:var(--muted);cursor:pointer}
+  .tagline{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;color:var(--muted);text-align:center;margin:7px 0 8px;text-shadow:0 1px 2px rgba(255,255,255,.8)}
+  .tagline b{color:var(--body)}.tagline i{color:var(--mind);font-style:normal}.tagline u{color:var(--soul);text-decoration:none}
+  .chips{display:flex;gap:7px;overflow-x:auto;padding-bottom:2px}.chips::-webkit-scrollbar{height:0}
+  .chip{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 4px 10px -7px rgba(20,24,33,.4);white-space:nowrap}
+  .chip .k{width:9px;height:9px;border-radius:50%}
+  .chip[data-cat=body] .k{background:var(--body)}.chip[data-cat=mind] .k{background:var(--mind)}.chip[data-cat=soul] .k{background:var(--soul)}
+  .chip.on[data-cat=all]{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .chip.on[data-cat=body]{background:var(--body-soft);border-color:var(--body);color:var(--body)}
+  .chip.on[data-cat=mind]{background:var(--mind-soft);border-color:var(--mind);color:#9c6411}
+  .chip.on[data-cat=soul]{background:var(--soul-soft);border-color:var(--soul);color:var(--soul)}
+  .mapbtns{position:absolute;right:11px;bottom:216px;display:flex;flex-direction:column;gap:8px;z-index:24}
+  .fab{position:absolute;right:12px;bottom:152px;z-index:27;display:flex;align-items:center;gap:7px;background:var(--accent);color:#fff;border:none;border-radius:999px;padding:13px 17px;font:inherit;font-weight:800;font-size:13px;cursor:pointer;box-shadow:0 10px 24px -8px rgba(49,68,230,.6);transition:opacity .2s,transform .2s}
+  .sheet.open ~ .fab,.preview.show ~ .fab{opacity:0;pointer-events:none;transform:translateY(8px)}
+  .mapbtns button{width:40px;height:40px;border-radius:12px;background:#fff;border:1px solid var(--line);display:grid;place-items:center;font-size:16px;cursor:pointer;box-shadow:0 5px 12px -6px rgba(20,24,33,.4)}
+  .preview{position:absolute;left:10px;right:10px;bottom:150px;z-index:26;background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:0 14px 30px -12px rgba(20,24,33,.5);display:none}
+  .preview.show{display:flex}
+  .preview .thumb{flex:0 0 84px;background:repeating-linear-gradient(135deg,var(--fill) 0 10px,var(--fill-2) 10px 20px);display:grid;place-items:center;color:var(--faint);font-size:20px}
+  .preview .pv{padding:11px 12px;flex:1;min-width:0}.preview h3{margin:0 0 2px;font-size:13.5px}.preview p{margin:0;font-size:11.5px;color:var(--muted)}
+  .preview .pmeta{display:flex;gap:10px;margin-top:7px;font-family:var(--mono);font-size:10.5px;color:var(--faint)}.preview .pmeta b{color:var(--ink)}
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:28;background:var(--screen);border-radius:20px 20px 0 0;box-shadow:0 -8px 24px -12px rgba(20,24,33,.3);height:138px;transition:height .28s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column}
+  .sheet.open{height:520px}
+  .grip{padding:9px 0 5px;display:flex;justify-content:center;cursor:pointer;flex:0 0 auto}.grip .bar{width:38px;height:4px;border-radius:999px;background:var(--line-strong)}
+  .sheet .shd{padding:2px 16px 8px;display:flex;align-items:center;justify-content:space-between}.sheet .shd b{font-size:14px}.sheet .shd b span{color:var(--accent)}.sheet .shd small{font-family:var(--mono);font-size:10px;color:var(--muted)}
+  .sheet .list{overflow-y:auto;padding:2px 12px 12px}.sheet .list::-webkit-scrollbar{width:0}
+  .sheet:not(.open) .list{display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;padding-bottom:10px}
+  .sheet:not(.open) .ev{flex:0 0 215px}.sheet:not(.open) .ev .ethumb{display:none}
+  .ev{display:flex;gap:11px;border:1px solid var(--line);border-radius:13px;padding:10px;margin-bottom:9px;cursor:pointer;background:var(--screen)}
+  .ev .ethumb{flex:0 0 54px;height:54px;border-radius:10px;background:repeating-linear-gradient(135deg,var(--fill) 0 9px,var(--fill-2) 9px 18px);display:grid;place-items:center;font-size:18px}
+  .ev .ed{min-width:0;flex:1}.ev .etag{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-bottom:3px}
+  .ev[data-cat=body] .etag{color:var(--body)}.ev[data-cat=mind] .etag{color:#9c6411}.ev[data-cat=soul] .etag{color:var(--soul)}
+  .ev .etag .k{width:8px;height:8px;border-radius:50%}
+  .ev[data-cat=body] .etag .k{background:var(--body)}.ev[data-cat=mind] .etag .k{background:var(--mind)}.ev[data-cat=soul] .etag .k{background:var(--soul)}
+  .ev h4{margin:0 0 2px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ev p{margin:0;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ev .emeta{display:flex;gap:9px;margin-top:6px;font-family:var(--mono);font-size:10px;color:var(--faint)}.ev .emeta b{color:var(--ink)}
+
+  /* ---- DETAIL ---- */
+  .hero{height:158px;background:repeating-linear-gradient(135deg,var(--fill) 0 12px,var(--fill-2) 12px 24px);display:grid;place-items:center;color:var(--faint);font-family:var(--mono);font-size:10px;position:relative}
+  .hero .back{position:absolute;top:12px;left:12px;width:32px;height:32px;border-radius:10px;background:#fff;border:1px solid var(--line);display:grid;place-items:center;cursor:pointer}
+  .pad{padding:14px 16px}
+  .hosted{display:flex;align-items:center;gap:10px;margin:12px 16px;padding:10px 11px;border:1px solid var(--line);border-radius:12px;background:#fff;cursor:pointer}
+  .hosted .hav{width:38px;height:38px;border-radius:50%;background:var(--fill-2);display:grid;place-items:center;font-weight:800;color:var(--muted);font-size:11px}
+  .hosted b{font-size:13px}.hosted small{display:block;color:var(--muted);font-size:11px}
+  .infoline{display:flex;gap:11px;align-items:flex-start;margin:0 16px;padding:11px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+  .infoline .ic{width:22px;text-align:center}.infoline b{display:block}.infoline span{color:var(--muted);font-size:11.5px}
+  .incl{display:flex;gap:6px;flex-wrap:wrap;padding:10px 16px}.incl span{font-size:11px;color:var(--muted);background:var(--fill);border:1px solid var(--line);border-radius:7px;padding:5px 9px}
+  .joinbar{position:absolute;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);padding:11px 16px;display:flex;align-items:center;gap:12px;z-index:20}
+  .joinbar .price b{font-size:18px}.joinbar .price small{display:block;color:var(--muted);font-size:10px;font-family:var(--mono)}
+  .joinbar .btn{width:auto;flex:1}
+
+  /* ---- PAY ---- */
+  .paysum{margin:10px 16px;border:1px solid var(--line);border-radius:14px;background:#fff;overflow:hidden}
+  .paysum .top{padding:12px 13px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center}
+  .paysum .top .ic{width:40px;height:40px;border-radius:10px;background:var(--fill);display:grid;place-items:center;font-size:19px}
+  .paysum .top b{font-size:13.5px}.paysum .top small{display:block;color:var(--muted);font-family:var(--mono);font-size:10.5px;margin-top:2px}
+  .paysum .pl{display:flex;justify-content:space-between;font-size:12.5px;padding:9px 13px;border-bottom:1px dashed var(--line)}
+  .paysum .pl.tot{font-weight:800;border:none;font-size:14px}.paysum .pl span:last-child{font-family:var(--mono)}
+  .paymethod{display:flex;align-items:center;gap:10px;margin:0 16px 8px;padding:12px 13px;border:1px solid var(--accent);background:var(--accent-soft);border-radius:12px;font-size:12.5px;font-weight:700}
+  .paymethod.off{border-color:var(--line);background:#fff;color:var(--muted);font-weight:600}
+  .paymethod .r{margin-left:auto;width:18px;height:18px;border-radius:50%;border:5px solid var(--accent);background:#fff}
+  .paymethod.off .r{border-color:var(--line)}
+
+  /* ---- DONE ---- */
+  .done{padding:48px 26px 16px;text-align:center}
+  .done .tick{width:66px;height:66px;border-radius:50%;background:var(--ok-soft);color:var(--ok);display:grid;place-items:center;font-size:30px;margin:0 auto 16px}
+  .done h2{margin:0 0 6px;font-size:20px}.done p{color:var(--muted);font-size:13px;margin:0 0 6px}
+
+  /* ---- PROMPT ---- */
+  .celebrate{background:var(--body-soft);border:1px solid var(--body);border-radius:18px;padding:22px 18px;text-align:center;margin:14px 16px}
+  .celebrate .big{font-size:34px}.celebrate h2{margin:8px 0 4px;font-size:19px}.celebrate p{margin:0;color:var(--muted);font-size:12.5px}
+  .recapcard{border:1px solid var(--line);border-radius:14px;background:var(--screen);overflow:hidden;margin:0 16px 16px}
+  .recapcard .r{display:flex;gap:10px;align-items:center;padding:12px 13px}
+  .recapcard .ic{width:42px;height:42px;border-radius:11px;background:var(--fill);display:grid;place-items:center;font-size:20px;flex:0 0 42px}
+  .recapcard b{font-size:13.5px}.recapcard small{display:block;color:var(--muted);font-family:var(--mono);font-size:10.5px;margin-top:2px}
+  .ratebox{padding:14px 13px;border-top:1px solid var(--line);text-align:center}.ratebox p{margin:0 0 9px;font-size:12.5px;font-weight:700}
+
+  /* ---- COMPOSE ---- */
+  .photogrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:14px 16px 4px}
+  .photogrid .ph{aspect-ratio:1;border-radius:11px;background:repeating-linear-gradient(135deg,var(--fill) 0 10px,var(--fill-2) 10px 20px)}
+  .photogrid .add{aspect-ratio:1;border-radius:11px;border:1.5px dashed var(--line-strong);display:grid;place-items:center;color:var(--faint);font-size:22px;cursor:pointer}
+  .capinput{margin:12px 16px;font-size:13.5px;color:var(--faint);min-height:48px}
+  .attach{display:flex;align-items:center;gap:9px;margin:0 16px 8px;padding:10px 11px;border:1px solid var(--line);border-radius:11px;background:var(--fill)}
+  .attach .ic{font-size:17px}.attach b{font-size:12px}.attach small{display:block;color:var(--muted);font-size:10.5px}.attach .x{margin-left:auto;color:var(--faint);cursor:pointer;font-size:15px}
+  .visrow{display:flex;gap:8px;padding:6px 16px}
+  .visrow .v{flex:1;border:1px solid var(--line);border-radius:11px;padding:10px;text-align:center;font-size:11.5px;font-weight:700;cursor:pointer;color:var(--muted);background:var(--screen)}
+  .visrow .v.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}.visrow .v small{display:block;font-weight:500;color:var(--muted);font-size:10px;margin-top:2px}
+
+  /* ---- FEED ---- */
+  .feedhd{position:sticky;top:0;background:var(--screen);z-index:20;border-bottom:1px solid var(--line)}
+  .feedhd .row{display:flex;align-items:center;padding:12px 16px 4px}.feedhd h2{margin:0;font-size:20px}
+  .feedhd .ic{margin-left:auto;display:flex;gap:8px}.feedhd .ic button{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:var(--fill);display:grid;place-items:center;font-size:15px;cursor:pointer}
+  .ftabs{display:flex;padding:0 16px;gap:18px}.ftabs button{border:none;background:none;font:inherit;font-weight:700;font-size:13px;color:var(--faint);padding:9px 0;cursor:pointer;border-bottom:2px solid transparent}.ftabs button.on{color:var(--ink);border-color:var(--ink)}
+  .post{border-bottom:8px solid var(--fill);background:var(--screen)}
+  .post .phd{display:flex;align-items:center;gap:9px;padding:12px 14px 9px}
+  .post .pav{width:38px;height:38px;border-radius:50%;background:var(--fill-2);display:grid;place-items:center;font-size:11px;font-weight:800;color:var(--muted);flex:0 0 38px;cursor:pointer}
+  .post .who{min-width:0}.post .who b{font-size:13px}.post .who .l2{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:1px}
+  .post .phd .followbtn{margin-left:auto}
+  .actref{display:flex;align-items:center;gap:7px;margin:0 14px 9px;padding:7px 10px;background:var(--fill);border:1px solid var(--line);border-radius:10px;font-size:11.5px;cursor:pointer}
+  .actref b{font-weight:700}.actref .go{margin-left:auto;color:var(--muted)}
+  .media{height:200px;background:repeating-linear-gradient(135deg,var(--fill) 0 13px,var(--fill-2) 13px 26px);display:grid;place-items:center;color:var(--faint);font-family:var(--mono);font-size:10px}
+  .media.g2{display:grid;grid-template-columns:1fr 1fr;gap:2px;height:150px}.media.g2 i{background:repeating-linear-gradient(135deg,var(--fill) 0 11px,var(--fill-2) 11px 22px)}
+  .pcap{padding:10px 14px 4px;font-size:13px}
+  .next{display:flex;align-items:center;gap:9px;margin:8px 14px 4px;padding:10px 12px;border-radius:11px;border:1px dashed var(--accent);background:var(--accent-soft);cursor:pointer}
+  .next .o{font-size:15px}.next b{font-size:12px;color:var(--accent)}.next small{display:block;color:var(--muted);font-size:10.5px}.next .go{margin-left:auto;color:var(--accent);font-weight:800}
+  .eng{display:flex;gap:20px;padding:11px 16px 13px;color:var(--muted);font-size:12.5px}.eng span{display:inline-flex;align-items:center;gap:6px;cursor:pointer}.eng span b{color:var(--ink);font-weight:600}
+  .wtf{background:var(--screen);border-bottom:8px solid var(--fill);padding:12px 0 14px}
+  .wtf .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:0 16px 8px}
+  .wtf .scroller{display:flex;gap:10px;overflow-x:auto;padding:0 16px}.wtf .scroller::-webkit-scrollbar{height:0}
+  .pcard{flex:0 0 130px;border:1px solid var(--line);border-radius:14px;padding:13px 10px;text-align:center;background:var(--screen)}
+  .pcard .pav{width:48px;height:48px;border-radius:50%;background:var(--fill-2);margin:0 auto 7px;display:grid;place-items:center;font-weight:800;color:var(--muted);font-size:13px}
+  .pcard b{font-size:12.5px;display:block}.pcard small{font-size:10px;color:var(--muted);display:block;margin:2px 0 9px;min-height:24px}.pcard .followbtn{width:100%;padding:7px 0}
+
+  /* ---- PROFILE (other) ---- */
+  .cover{height:92px;background:repeating-linear-gradient(135deg,var(--fill) 0 14px,var(--fill-2) 14px 28px);position:relative}
+  .cover .back{position:absolute;top:12px;left:12px;width:32px;height:32px;border-radius:10px;background:#fff;border:1px solid var(--line);display:grid;place-items:center;cursor:pointer}
+  .pf{padding:0 16px;margin-top:-30px}
+  .pf .pfav{width:72px;height:72px;border-radius:50%;background:var(--fill-2);border:3px solid var(--screen);display:grid;place-items:center;font-weight:800;font-size:20px;color:var(--muted)}
+  .pf .nm{display:flex;align-items:center;gap:8px;margin-top:8px}.pf h2{margin:0;font-size:19px}
+  .pf .bio{color:var(--muted);font-size:12.5px;margin:5px 0 0}
+  .pfstats{display:flex;gap:20px;margin:12px 0}.pfstats div b{font-size:16px}.pfstats div small{color:var(--muted);font-size:11px;font-family:var(--mono)}
+  .upc{display:flex;gap:10px;align-items:center;margin:0 16px 8px;border:1px solid var(--line);border-radius:13px;padding:10px 12px;cursor:pointer}
+  .upc .ic{width:38px;height:38px;border-radius:10px;background:var(--fill);display:grid;place-items:center;font-size:18px;flex:0 0 38px}
+  .upc b{font-size:12.5px}.upc small{display:block;color:var(--muted);font-family:var(--mono);font-size:10.5px}.upc .price{margin-left:auto;font-weight:800;font-size:13px}
+  .uplabel{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:16px 16px 8px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;padding:4px 4px 0}.grid3 .t{aspect-ratio:1;background:repeating-linear-gradient(135deg,var(--fill) 0 11px,var(--fill-2) 11px 22px)}
+
+  /* ---- PEOPLE ---- */
+  .prow{display:flex;align-items:center;gap:11px;margin:0 16px;padding:11px 0;border-bottom:1px solid var(--line)}
+  .prow .pav{width:42px;height:42px;border-radius:50%;background:var(--fill-2);display:grid;place-items:center;font-weight:800;color:var(--muted);font-size:12px;flex:0 0 42px;cursor:pointer}
+  .prow .nm{display:flex;align-items:center;gap:7px}.prow b{font-size:13px}.prow small{display:block;color:var(--muted);font-size:11px;margin-top:1px}.prow .followbtn{margin-left:auto}
+
+  /* ---- ASSISTANT ---- */
+  .ai-head{background:var(--ai-soft);padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line)}
+  .ai-orb{width:34px;height:34px;border-radius:11px;background:var(--ai);color:#fff;display:grid;place-items:center;font-size:16px;font-weight:800}
+  .ai-head b{font-size:14.5px}.ai-head small{display:block;color:var(--ai);font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+  .bubble{max-width:84%;padding:10px 13px;border-radius:15px;font-size:13px;margin:0 16px 10px;line-height:1.5}
+  .bubble.me{margin-left:auto;background:var(--ink);color:#fff;border-bottom-right-radius:5px}
+  .bubble.bot{background:var(--ai-soft);border-bottom-left-radius:5px}
+  .bubble.bot .chiplet{display:inline-block;font-family:var(--mono);font-size:10px;background:#fff;border:1px solid var(--line);border-radius:6px;padding:2px 6px;margin:2px 3px 0 0}
+  .opt{border:1px solid var(--line);border-radius:13px;background:var(--screen);margin:0 16px 9px;padding:11px 12px;cursor:pointer}
+  .opt.pick{border-color:var(--ai);box-shadow:0 0 0 3px var(--ai-soft)}
+  .opt .row{display:flex;justify-content:space-between;align-items:center}.opt h4{margin:0;font-size:13.5px}.opt .price{font-family:var(--mono);font-weight:700;font-size:13px}.opt p{margin:4px 0 0;font-size:11.5px;color:var(--muted)}
+  .composer{display:flex;gap:8px;align-items:center;padding:10px 14px;border-top:1px solid var(--line)}
+  .composer .field{flex:1;background:var(--fill);border:1px solid var(--line);border-radius:999px;padding:10px 14px;color:var(--faint);font-size:12.5px}
+  .composer .send{width:38px;height:38px;border-radius:50%;background:var(--ai);color:#fff;display:grid;place-items:center;border:none;cursor:pointer;font-size:15px}
+  .statusbox{margin:12px 16px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .statusbox .hd{background:var(--ai-soft);padding:11px 13px;display:flex;justify-content:space-between;align-items:center}.statusbox .hd b{font-size:13.5px}.statusbox .hd .tag{background:#fff}
+  .progress{height:7px;background:var(--fill);border-radius:999px;overflow:hidden;margin:9px 0 3px}.progress i{display:block;height:100%;width:80%;background:var(--ai)}
+  .roster{padding:11px 13px}.roster .r{display:flex;align-items:center;gap:9px;padding:6px 0;font-size:12.5px}.roster .r .av{width:24px;height:24px;border-radius:50%;background:var(--fill-2);display:grid;place-items:center;font-size:9px;font-weight:700;color:var(--muted)}.roster .r .st{margin-left:auto;font-family:var(--mono);font-size:10.5px}.st.in{color:var(--ok)}.st.wait{color:var(--warn)}
+  .split{margin:0 16px 12px;border:1px solid var(--line);border-radius:14px;padding:12px 13px}.split .pl{display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;border-bottom:1px dashed var(--line)}.split .pl:last-child{border:none;font-weight:700;padding-top:9px}.split .pl span:last-child{font-family:var(--mono)}
+
+  /* ---- GROUP CHAT ---- */
+  .screen[data-screen="chat"].active{display:flex;flex-direction:column;height:calc(740px - 22px - 30px)}
+  .chathd{display:flex;align-items:center;gap:11px;padding:11px 14px;border-bottom:1px solid var(--line);flex:0 0 auto}
+  .chathd .x{font-size:16px;font-weight:700;cursor:pointer;color:var(--muted)}
+  .chathd .cgi{width:34px;height:34px;border-radius:10px;background:var(--body-soft);display:grid;place-items:center;font-size:16px;flex:0 0 34px}
+  .chathd .t{min-width:0;flex:1}.chathd .t b{font-size:14px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.chathd .t small{font-size:10px;color:var(--muted);font-family:var(--mono)}
+  .chathd .info{width:32px;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--fill);display:grid;place-items:center;cursor:pointer;font-size:14px}
+  .chatpin{display:flex;gap:10px;align-items:center;margin:9px 12px 4px;padding:9px 11px;border:1px solid var(--accent);background:var(--accent-soft);border-radius:12px;cursor:pointer;flex:0 0 auto}
+  .chatpin .ic{width:36px;height:36px;border-radius:9px;background:#fff;display:grid;place-items:center;font-size:17px;flex:0 0 36px}
+  .chatpin .pinlbl{font-family:var(--mono);font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:800;display:block;margin-bottom:1px}
+  .chatpin b{font-size:12.5px;display:block;line-height:1.25}.chatpin small{font-size:10px;color:var(--muted);font-family:var(--mono)}
+  .chatpin .go{margin-left:auto;color:var(--accent);font-weight:800}
+  .cmsgs{flex:1;overflow-y:auto;padding:8px 14px 12px;display:flex;flex-direction:column}.cmsgs::-webkit-scrollbar{width:0}
+  .sysmsg{align-self:center;text-align:center;font-size:10px;color:var(--faint);font-family:var(--mono);background:var(--fill);border-radius:999px;padding:4px 12px;margin:7px 0}
+  .cmsg{display:flex;gap:8px;max-width:86%;margin-top:8px}
+  .cmsg .cav{width:26px;height:26px;border-radius:50%;background:var(--fill-2);display:grid;place-items:center;font-size:9px;font-weight:800;color:var(--muted);flex:0 0 26px;align-self:flex-end}
+  .cmsg .cb{min-width:0}
+  .cmsg .sender{font-size:10.5px;font-weight:700;margin:0 0 2px 2px;color:var(--muted);display:flex;align-items:center;gap:5px}
+  .cmsg .sender .adm{font-family:var(--mono);font-size:8px;letter-spacing:.04em;text-transform:uppercase;background:var(--host);color:#fff;padding:1px 5px;border-radius:4px;font-weight:800}
+  .cbubble{background:var(--fill);border-radius:14px;border-bottom-left-radius:4px;padding:8px 11px;font-size:12.5px;line-height:1.45}
+  .cmsg.host .cbubble{background:var(--body-soft)}
+  .cmsg.me{margin-left:auto;flex-direction:row-reverse}
+  .cmsg.me .cav,.cmsg.me .sender{display:none}
+  .cmsg.me .cbubble{background:var(--accent);color:#fff;border-radius:14px;border-bottom-right-radius:4px}
+  .ccomposer{display:flex;gap:8px;align-items:center;padding:9px 12px;border-top:1px solid var(--line);background:var(--screen);flex:0 0 auto}
+  .ccomposer .plus{width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:var(--fill);display:grid;place-items:center;font-size:16px;cursor:pointer;color:var(--muted)}
+  .ccomposer .field{flex:1;background:var(--fill);border:1px solid var(--line);border-radius:999px;padding:10px 14px;color:var(--faint);font-size:12.5px}
+  .ccomposer .send{width:38px;height:38px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;border:none;cursor:pointer;font-size:15px}
+  .chatlink{display:inline-flex;align-items:center;gap:5px;margin-top:9px;font-size:11.5px;font-weight:700;color:var(--accent);cursor:pointer}
+
+  /* ---- ACTIVITIES / YOU ---- */
+  .seg{display:flex;gap:6px;padding:12px 16px 4px}.seg button{flex:1;border:1px solid var(--line);background:var(--screen);border-radius:10px;padding:8px;font:inherit;font-weight:700;font-size:12px;color:var(--muted);cursor:pointer}.seg button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .bk{margin:0 16px 10px;border:1px solid var(--line);border-radius:14px;padding:12px 13px;cursor:pointer}.bk .row1{display:flex;justify-content:space-between;align-items:center}.bk h3{margin:0;font-size:14px}.bk .when{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:3px}
+  .bk .paid{font-family:var(--mono);font-size:10px;padding:3px 7px;border-radius:6px;background:var(--ok-soft);color:var(--ok);font-weight:700}.bk .paid.join{background:var(--warn-soft);color:var(--warn)}
+  .avatars{display:flex;margin-top:9px}.avatars span{width:22px;height:22px;border-radius:50%;background:var(--fill-2);border:2px solid var(--screen);margin-left:-7px;display:grid;place-items:center;font-size:9px;color:var(--muted);font-weight:700}.avatars span:first-child{margin-left:0}
+  .phead{display:flex;flex-direction:column;align-items:center;gap:8px;padding:22px 16px 10px}
+  .phead .pfav{width:74px;height:74px;border-radius:50%;background:var(--fill-2);display:grid;place-items:center;font-size:24px;font-weight:800;color:var(--muted)}
+  .phead h2{margin:0;font-size:18px}.phead p{margin:0;color:var(--muted);font-size:12.5px}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);margin:8px 16px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .stats div{padding:13px 6px;text-align:center;border-right:1px solid var(--line)}.stats div:last-child{border:none}.stats b{display:block;font-size:18px}.stats small{color:var(--muted);font-size:10.5px;font-family:var(--mono)}
+  .selchip{border:1px solid var(--line);border-radius:999px;padding:7px 13px;font-size:12px;cursor:pointer;background:#fff;font-weight:700;color:var(--muted);display:inline-flex;gap:6px;align-items:center}
+  .selchip.on{background:var(--body-soft);color:var(--body);border-color:var(--body)}
+  .chiprow{display:flex;gap:7px;flex-wrap:wrap;padding:0 16px 6px}
+  .listrow{display:flex;align-items:center;gap:11px;margin:0 16px;padding:13px 2px;border-bottom:1px solid var(--line);font-size:13.5px;cursor:pointer}.listrow .ic{width:30px;text-align:center}.listrow .ch{margin-left:auto;color:var(--faint)}
+  .hostcta{margin:14px 16px;border:1px solid var(--host);border-radius:14px;padding:14px;display:flex;align-items:center;gap:12px;background:#fff;cursor:pointer}
+  .hostcta .ic{width:40px;height:40px;border-radius:11px;background:var(--host);color:#fff;display:grid;place-items:center;font-size:18px;flex:0 0 40px}
+  .hostcta b{font-size:13.5px}.hostcta small{display:block;color:var(--muted);font-size:11.5px}.hostcta .go{margin-left:auto;font-weight:800}
+
+  /* ---- HOST ---- */
+  .earn{display:flex;margin:6px 16px 4px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff}.earn div{flex:1;padding:13px 12px;border-right:1px solid var(--line)}.earn div:last-child{border:none}.earn b{display:block;font-size:18px}.earn small{color:var(--muted);font-size:10px;font-family:var(--mono)}
+  .act{margin:0 16px 10px;border:1px solid var(--line);border-radius:14px;background:#fff;padding:12px 13px;cursor:pointer}.act .top{display:flex;gap:7px;align-items:center;margin-bottom:6px}.act h3{margin:0 0 2px;font-size:14.5px}.act .when{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .capwrap{margin-top:9px}.capbar{height:7px;border-radius:999px;background:var(--fill);overflow:hidden}.capbar i{display:block;height:100%;background:var(--body)}
+  .capnums{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:5px}.capnums b{color:var(--ink)}
+  .nudge{margin:2px 16px 12px;border:1px solid var(--ai);background:var(--ai-soft);border-radius:13px;padding:11px 12px;display:flex;gap:10px;align-items:center}
+  .nudge .o{width:28px;height:28px;border-radius:9px;background:var(--ai);color:#fff;display:grid;place-items:center;font-weight:800;flex:0 0 28px}.nudge p{margin:0;font-size:12px}.nudge button{margin-left:auto;border:none;background:var(--ai);color:#fff;font:inherit;font-weight:700;font-size:11px;padding:7px 11px;border-radius:9px;cursor:pointer;white-space:nowrap}
+  .field-lbl{font-size:11.5px;font-weight:700;padding:14px 16px 5px;display:flex;justify-content:space-between;align-items:center}.field-lbl a{color:var(--ai);font-size:11px;font-weight:700;text-decoration:none;cursor:pointer}
+  .input{margin:0 16px;border:1px solid var(--line);border-radius:11px;padding:11px 13px;color:var(--ink);font-size:12.5px;background:#fff}.input.ph{color:var(--faint)}.input.area{min-height:58px}
+  .venuecard{margin:0 16px;border:1px solid var(--line);border-radius:12px;padding:11px 12px;display:flex;gap:10px;align-items:center;background:#fff}
+  .venuecard .mini{width:46px;height:46px;border-radius:9px;flex:0 0 46px;background:radial-gradient(circle at 60% 40%,var(--body) 0 5px,transparent 6px),repeating-linear-gradient(0deg,var(--fill) 0 8px,#fff 8px 9px),repeating-linear-gradient(90deg,var(--fill) 0 8px,#fff 8px 9px),var(--fill)}
+  .venuecard b{font-size:12.5px}.venuecard small{display:block;color:var(--muted);font-size:11px}.venuecard .ok{margin-left:auto;color:var(--ok);font-size:11px;font-family:var(--mono)}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px}.two .input{margin:0}
+  .toggle{display:flex;justify-content:space-between;align-items:center;margin:14px 16px;padding:12px 13px;border:1px solid var(--line);border-radius:12px;background:#fff}.toggle small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+  .switch{width:42px;height:24px;border-radius:999px;background:var(--fill-2);position:relative;flex:0 0 42px}.switch::after{content:"";position:absolute;width:18px;height:18px;border-radius:50%;background:#fff;top:3px;left:3px;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+  .stathd{margin:8px 16px 10px;border:1px solid var(--line);border-radius:14px;background:#fff;padding:13px}.stathd .row{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}.stathd h3{margin:0;font-size:15px}
+  .att{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}.att:last-child{border:none}.att .av{width:28px;height:28px;border-radius:50%;background:var(--fill-2);display:grid;place-items:center;font-size:9px;font-weight:800;color:var(--muted)}
+  .att .pay{margin-left:auto;font-family:var(--mono);font-size:10px;padding:3px 7px;border-radius:6px;background:var(--ok-soft);color:var(--ok);font-weight:700}
+  .att .chk{margin-left:8px;width:22px;height:22px;border-radius:6px;border:1.5px solid var(--line);display:grid;place-items:center;font-size:12px;color:transparent;cursor:pointer}.att .chk.on{background:var(--ok);border-color:var(--ok);color:#fff}
+
+  /* ---- ONBOARDING ---- */
+  .ob{padding:42px 24px 12px;text-align:center}.ob .logo{font-size:38px;font-weight:900;letter-spacing:-0.03em}.ob .logo span{color:var(--accent)}.ob .tg{color:var(--muted);font-size:13px;margin-bottom:22px}
+  .ob .mapbox{height:140px;margin:0 0 16px;border-radius:16px;border:1px solid var(--line);background:radial-gradient(circle at 30% 40%,var(--body-soft) 0 9px,transparent 10px),radial-gradient(circle at 64% 58%,var(--soul-soft) 0 9px,transparent 10px),repeating-linear-gradient(0deg,var(--fill) 0 24px,var(--screen) 24px 25px),repeating-linear-gradient(90deg,var(--fill) 0 24px,var(--screen) 24px 25px);display:grid;place-items:center;color:var(--faint);font-family:var(--mono);font-size:10px}
+  .opt-loc{text-align:left;border:1px solid var(--line);border-radius:12px;padding:12px 13px;margin-bottom:8px;display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px}.opt-loc.on{border-color:var(--accent);background:var(--accent-soft)}.opt-loc b{display:block}.opt-loc small{color:var(--muted)}
+
+  /* ---- LOGIN / OTP ---- */
+  .loginbox{padding:6px 26px 16px}
+  .phoneinput{display:flex;align-items:center;gap:11px;border:1px solid var(--line);border-radius:12px;padding:13px 14px;background:#fff}
+  .phoneinput .cc{font-weight:700;font-size:14px;border-right:1px solid var(--line);padding-right:11px}
+  .phoneinput .pn{color:var(--faint);font-size:14px;letter-spacing:.04em}
+  .otpboxes{display:flex;gap:8px}
+  .ob1{flex:1;height:52px;border:1px solid var(--line);border-radius:11px;display:grid;place-items:center;font-size:22px;font-weight:700;background:#fff}
+  .ob1.cur{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+
+  /* ---- LOCATION SELECTOR (map home) ---- */
+  .locrow{display:flex;align-items:center;gap:10px;margin-bottom:7px}
+  .locpill{flex:1;display:flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--line);border-radius:13px;padding:9px 13px;box-shadow:0 6px 16px -8px rgba(20,24,33,.35);font:inherit;cursor:pointer;text-align:left}
+  .locpill .pn2{font-size:15px}.locpill b{font-size:13.5px}.locpill small{color:var(--muted);font-size:10px;font-family:var(--mono)}.locpill .chev{margin-left:auto;color:var(--muted)}
+  .locrow .uav{width:38px;height:38px;border-radius:50%;background:#fff;border:1px solid var(--line);display:grid;place-items:center;font-size:11px;font-weight:800;color:var(--muted);cursor:pointer;box-shadow:0 6px 16px -8px rgba(20,24,33,.35);flex:0 0 38px}
+  .locmenu{display:none;position:absolute;top:52px;left:0;right:0;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 16px 34px -12px rgba(20,24,33,.45);padding:8px;z-index:40}
+  .locmenu.show{display:block}
+  .locmenu .lsearch{display:flex;align-items:center;gap:8px;background:var(--fill);border:1px solid var(--line);border-radius:10px;padding:9px 11px;color:var(--faint);font-size:12px;margin-bottom:6px}
+  .locmenu .opt-loc{border:none;margin-bottom:1px;border-radius:10px;padding:10px 11px}.locmenu .opt-loc.on{background:var(--accent-soft)}
+  .locmenu .opt-loc .det{margin-left:auto;font-family:var(--mono);font-size:8.5px;text-transform:uppercase;letter-spacing:.05em;background:var(--ok-soft);color:var(--ok);padding:2px 6px;border-radius:5px;font-weight:700}
+
+  /* ---- GROUP CHAT ---- */
+  .screen[data-screen="chat"].active{display:flex;flex-direction:column;height:100%}
+  .chathd{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line);background:var(--screen)}
+  .chathd .x{font-size:16px;font-weight:700;cursor:pointer;color:var(--muted)}
+  .chathd .ct b{font-size:14px;display:block}.chathd .ct small{font-size:10px;color:var(--muted);font-family:var(--mono)}
+  .chathd .ci{margin-left:auto;color:var(--muted);font-size:16px;cursor:pointer}
+  .pinned{flex:0 0 auto;margin:10px 12px 4px;border:1px solid #E5DBCC;background:#FBF8F1;border-radius:12px;overflow:hidden;cursor:pointer}
+  .pinned .pintop{font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#9A6F45;padding:8px 11px 0}
+  .pinned .pinrow{display:flex;align-items:center;gap:10px;padding:7px 11px 10px}
+  .pinned .pinrow .ic{width:36px;height:36px;border-radius:9px;background:#fff;border:1px solid var(--line);display:grid;place-items:center;font-size:17px;flex:0 0 36px}
+  .pinned .pinrow b{font-size:12.5px}.pinned .pinrow small{display:block;color:var(--muted);font-size:10px;font-family:var(--mono);margin-top:1px}.pinned .pinrow .go{margin-left:auto;color:var(--muted)}
+  .chatbody{flex:1 1 auto;overflow-y:auto;min-height:0;padding:10px 0 8px;background:var(--screen)}.chatbody::-webkit-scrollbar{width:0}
+  .sys{text-align:center;font-size:10px;color:var(--faint);font-family:var(--mono);margin:4px 0 12px}
+  .gmsg{display:flex;gap:8px;margin:0 12px 10px;align-items:flex-end}
+  .gmsg .gav{width:26px;height:26px;border-radius:50%;background:var(--fill-2);display:grid;place-items:center;font-size:9px;font-weight:800;color:var(--muted);flex:0 0 26px}
+  .gmsg .gn{font-size:10.5px;font-weight:700;margin:0 0 3px 2px;display:flex;gap:6px;align-items:center;color:var(--muted)}
+  .gmsg .gn .adm{font-family:var(--mono);font-size:8px;letter-spacing:.05em;text-transform:uppercase;background:var(--host);color:#fff;padding:1px 5px;border-radius:4px}
+  .gmsg .gb{max-width:238px;background:var(--fill);border:1px solid var(--line);border-radius:14px 14px 14px 5px;padding:8px 11px;font-size:12.5px;line-height:1.45}
+  .gmsg.me{flex-direction:row-reverse}.gmsg.me .gb{background:var(--accent);color:#fff;border-color:var(--accent);border-radius:14px 14px 5px 14px}
+  .composer .send.acc{background:var(--accent)}
+  .chatlink{margin-top:10px;border:1px solid var(--line);background:var(--fill);border-radius:9px;padding:8px;width:100%;font:inherit;font-weight:700;font-size:11.5px;cursor:pointer;color:var(--ink)}
+
+  /* nav */
+  .nav{flex:0 0 62px;display:flex;align-items:center;justify-content:space-around;border-top:1px solid var(--line);background:var(--screen);position:relative;z-index:35}
+  .nav.dark{background:var(--host);border-top-color:rgba(255,255,255,.1)}.nav.hidden{display:none}
+  .nav button{background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;font:inherit;font-size:9.5px;color:var(--faint);font-weight:600;width:56px}
+  .nav.dark button{color:rgba(255,255,255,.5)}.nav .ni{font-size:18px;line-height:1}.nav button.on{color:var(--accent)}.nav.dark button.on{color:#fff}
+  .nav .center{position:relative;top:-14px;color:var(--ai)}.nav .center .ni{width:50px;height:50px;border-radius:16px;background:var(--ai);color:#fff;display:grid;place-items:center;font-size:21px;box-shadow:0 8px 18px -6px var(--ai)}.nav.dark .center .ni{background:#fff;color:var(--host)}
+
+  /* ---------- PANEL ---------- */
+  .panel .now{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+  .panel h1{font-size:24px;margin:6px 0 2px;letter-spacing:-0.02em}.panel .sub{color:var(--muted);font-size:13.5px;margin:0 0 16px}
+  .journeys{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 15px;margin-bottom:18px}
+  .journeys .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+  .jbtns{display:flex;flex-direction:column;gap:7px}
+  .jbtns button{display:flex;align-items:center;gap:10px;text-align:left;border:1px solid var(--line);background:var(--screen);border-radius:11px;padding:10px 12px;cursor:pointer;font:inherit}
+  .jbtns button:hover{border-color:var(--line-strong)}.jbtns button.on{border-color:var(--ink);background:var(--fill)}
+  .jbtns .ji{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;font-size:11px;font-weight:800;color:#fff;flex:0 0 24px}
+  .jbtns b{font-size:12.5px;display:block}.jbtns small{font-size:11px;color:var(--muted)}
+  .stepper{margin-top:12px;border-top:1px solid var(--line);padding-top:11px;display:none}
+  .stepper.show{display:block}
+  .stepper .nowstep{font-size:12px;margin-bottom:9px}.stepper .nowstep b{font-weight:700}
+  .stepper .ctrl{display:flex;gap:8px}
+  .stepper .ctrl button{flex:1;border:1px solid var(--line);background:var(--screen);border-radius:9px;padding:9px;font:inherit;font-weight:700;font-size:12px;cursor:pointer}
+  .stepper .ctrl button.prim{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .stepper .ctrl button:disabled{opacity:.4;cursor:default}
+  .stepdots{display:flex;gap:4px;margin-bottom:9px;flex-wrap:wrap}
+  .stepdots i{width:8px;height:8px;border-radius:50%;background:var(--line)}.stepdots i.on{background:var(--ink)}.stepdots i.done{background:var(--line-strong)}
+
+  .note{border-left:2px solid var(--accent);padding:2px 0 2px 16px;margin:0 0 18px}.note.host{border-color:var(--host)}.note.ai{border-color:var(--ai)}
+  .note h4{margin:0 0 4px;font-size:13px}.note p{margin:0;color:var(--muted);font-size:12.5px}
+  .index .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:16px 0 8px}
+  .flowgrp{margin-bottom:13px}.flowgrp .gname{font-size:11px;font-weight:700;color:var(--faint);margin-bottom:5px;font-family:var(--mono);letter-spacing:.04em;display:flex;align-items:center;gap:6px}.flowgrp .gname .pip{width:9px;height:9px;border-radius:3px}
+  .index button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;border:1px solid transparent;background:none;padding:7px 10px;border-radius:9px;cursor:pointer;font:inherit;font-size:12.5px;color:var(--ink);margin-bottom:1px}
+  .index button:hover{background:#fff}.index button.on{background:var(--accent-soft);border-color:var(--accent);font-weight:600}.index button .num{font-family:var(--mono);font-size:10px;color:var(--muted);width:22px}
+  .hint{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:14px;line-height:1.6}
+  @media (max-width:860px){.stage{grid-template-columns:1fr;gap:26px}.device-wrap{position:static}.legend{display:none}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <div class="brandmark">Maidan<span>.</span></div>
+    <div class="kicker">Full prototype · for the mind, body &amp; soul</div>
+  </div>
+  <div class="legend">
+    <i><span class="dot" style="background:var(--body)"></span>Move</i>
+    <i><span class="dot" style="background:var(--mind)"></span>Learn</i>
+    <i><span class="dot" style="background:var(--soul)"></span>Feel</i>
+    <i><span class="dot" style="background:var(--host)"></span>Host</i>
+    <i><span class="dot" style="background:var(--ai)"></span>Assistant</i>
+  </div>
+</div>
+
+<div class="stage">
+
+  <!-- ============ PHONE ============ -->
+  <div class="device-wrap">
+    <div class="phone">
+      <div class="phone-screen">
+        <div class="notch"></div>
+        <div class="statusbar" id="statusbar"><span>9:41</span><span>5G ▮▮▮ 86%</span></div>
+
+        <div class="view" id="view">
+
+          <!-- LOGIN (phone) -->
+          <section class="screen" data-screen="login">
+            <div class="ob"><div class="logo">Maidan<span>.</span></div><div class="tg">For the mind, body &amp; soul — near you.</div></div>
+            <div class="loginbox">
+              <div class="field-lbl" style="padding-left:0">Your phone number</div>
+              <div class="phoneinput"><span class="cc">🇮🇳 +91</span><span class="pn">98860 12345</span></div>
+              <p class="fineprint" style="text-align:left;margin-left:0;margin-right:0">We'll text you a one-time code. No passwords to remember.</p>
+              <button class="btn" style="margin-top:10px" onclick="go('otp')">Send OTP</button>
+              <p class="fineprint">By continuing you agree to Maidan's community guidelines.</p>
+            </div>
+          </section>
+
+          <!-- OTP -->
+          <section class="screen" data-screen="otp">
+            <div class="ob"><div class="logo">Maidan<span>.</span></div><div class="tg">Enter the code we just sent</div></div>
+            <div class="loginbox">
+              <div class="field-lbl" style="padding-left:0">6-digit code · +91 98860 12345 <a onclick="go('login')">edit</a></div>
+              <div class="otpboxes"><span class="ob1">4</span><span class="ob1">8</span><span class="ob1">2</span><span class="ob1">1</span><span class="ob1 cur"></span><span class="ob1"></span></div>
+              <p class="fineprint" style="text-align:left;margin:12px 0 0">Didn't get it? Resend in 0:24</p>
+              <button class="btn" style="margin-top:16px" onclick="go('map')">Verify &amp; continue</button>
+            </div>
+          </section>
+
+          <!-- MAP (HOME) -->
+          <section class="screen" data-screen="map">
+            <div class="maparea">
+              <div class="map"></div>
+              <div class="maplabel" style="left:14%;top:30%">Cubbon Park</div>
+              <div class="maplabel" style="left:60%;top:74%">Domlur</div>
+              <div class="maplabel" style="left:70%;top:40%">100 Ft Rd</div>
+              <div class="maplabel" style="left:84%;top:14%">Ulsoor Lake</div>
+              <div class="topfloat">
+                <div class="locrow">
+                  <button class="locpill" onclick="toggleLoc(event)"><span class="pn2">📍</span><span><b id="locname">Indiranagar</b> <small id="locsub">· auto-detected</small></span><span class="chev">▾</span></button>
+                  <span class="uav" onclick="go('you')">SN</span>
+                </div>
+                <div class="searchbar"><span class="ph" style="border:none;padding-left:0">🔍 Search activities, hosts, places…</span></div>
+                <div class="tagline">For the <b>mind</b>, <i>body</i> &amp; <u>soul</u></div>
+                <div class="chips" id="chips">
+                  <span class="chip on" data-cat="all">All</span>
+                  <span class="chip" data-cat="body"><span class="k"></span>Move</span>
+                  <span class="chip" data-cat="mind"><span class="k"></span>Learn</span>
+                  <span class="chip" data-cat="soul"><span class="k"></span>Feel</span>
+                </div>
+                <div class="locmenu" id="locmenu">
+                  <div class="lsearch">🔍 Search a neighbourhood…</div>
+                  <div class="opt-loc on" onclick="pickLoc('Indiranagar','· auto-detected')"><span>🎯</span><div><b>Use current location</b><small>Detected: Indiranagar</small></div><span class="det">live</span></div>
+                  <div class="opt-loc" onclick="pickLoc('Koramangala','· selected')"><span>📍</span><div><b>Koramangala</b><small>3.2 km away</small></div></div>
+                  <div class="opt-loc" onclick="pickLoc('HSR Layout','· selected')"><span>📍</span><div><b>HSR Layout</b><small>5.1 km away</small></div></div>
+                  <div class="opt-loc" onclick="pickLoc('Jayanagar','· selected')"><span>📍</span><div><b>Jayanagar</b><small>6.0 km away</small></div></div>
+                </div>
+              </div>
+              <div class="youdot"></div>
+              <div class="cluster" style="left:30%;top:64%" onclick="openSheet()">12</div>
+              <div class="mapbtns"><button onclick="resetMap()">◎</button></div>
+              <div class="preview" id="preview">
+                <div class="thumb" id="pv-ic">🚴</div>
+                <div class="pv">
+                  <h3 id="pv-title"></h3><p id="pv-place"></p>
+                  <div class="pmeta" id="pv-meta"></div>
+                </div>
+              </div>
+              <div class="sheet" id="sheet">
+                <div class="grip" onclick="toggleSheet()"><div class="bar"></div></div>
+                <div class="shd"><b><span id="sheet-count">128</span> happening near you</b><small>Indiranagar · today</small></div>
+                <div class="list" id="list"></div>
+              </div>
+              <button class="fab" id="fab" onclick="go('create-hangout')">＋ Create a hangout</button>
+            </div>
+          </section>
+
+          <!-- DETAIL -->
+          <section class="screen" data-screen="detail">
+            <div class="hero"><div class="back" onclick="go('map')">‹</div>▢ ride photos →</div>
+            <div class="pad" style="padding-bottom:4px">
+              <span class="tag body"><span class="k"></span>Move · Cycling</span>
+              <h2 style="margin:8px 0 2px;font-size:19px">Nandi Hills sunrise trail ride</h2>
+              <p style="margin:0;color:var(--muted);font-size:12.5px">A 28 km sunrise climb · intermediate pace</p>
+            </div>
+            <div class="hosted" onclick="go('profile-other')">
+              <div class="hav">HM</div><div><b>Hosted by Hemant</b><small>⭐ 4.9 · 23 rides led · responds fast</small></div>
+            </div>
+            <div class="pad" style="padding-top:0">
+              <div class="infoline"><span class="ic">📅</span><div><b>Sat 21 Jun · 5:30 AM</b><span>~3 hrs, back by 9 AM</span></div></div>
+              <div class="infoline"><span class="ic">📍</span><div><b>Nandi base camp</b><span>Meet point · 21 km away · parking</span></div></div>
+              <div class="infoline"><span class="ic">👥</span><div><b>14 of 20 joined</b><span>6 spots left · all levels welcome</span></div></div>
+            </div>
+            <div class="sectlabel" style="padding-bottom:2px">What's included</div>
+            <div class="incl"><span>🚴 Route &amp; sweep rider</span><span>☕ Coffee at the top</span><span>🛟 First-aid</span></div>
+            <div class="sectlabel" style="padding-bottom:2px">Bring your own</div>
+            <div class="incl"><span>Cycle &amp; helmet</span><span>Water</span></div>
+            <div style="height:84px"></div>
+            <div class="joinbar"><div class="price"><b>₹350</b><small>PER PERSON</small></div><button class="btn" onclick="go('pay')">Join this ride</button></div>
+          </section>
+
+          <!-- PAY -->
+          <section class="screen" data-screen="pay">
+            <div class="backhd"><span class="x" onclick="go('detail')">‹</span><b>Confirm &amp; pay</b><span style="width:14px"></span></div>
+            <div class="paysum">
+              <div class="top"><div class="ic">🚴</div><div><b>Nandi Hills sunrise trail ride</b><small>SAT 21 JUN · 5:30 AM · hosted by Hemant</small></div></div>
+              <div class="pl"><span>1 spot</span><span>₹350</span></div>
+              <div class="pl"><span>Platform fee</span><span>₹25</span></div>
+              <div class="pl tot"><span>Total</span><span>₹375</span></div>
+            </div>
+            <div class="field-lbl">Pay with</div>
+            <div class="paymethod">📱 UPI · GPay <span class="r"></span></div>
+            <div class="paymethod off">💳 Card / wallet <span class="r"></span></div>
+            <div class="creed">
+              <span class="ce">🤝</span>
+              <div><b>The Maidan way</b><p>Hemant planned this for 14 people and is giving up his Saturday morning. <em>Show up, and be on time.</em> If plans change, cancel early so someone on the waitlist gets your spot.</p></div>
+            </div>
+            <div class="stack" style="margin-top:6px"><button class="btn" onclick="go('done')">Pay ₹375 &amp; join</button></div>
+            <p class="fineprint">Hemant receives ₹350. Showing up keeps your reliability high — it's how hosts trust you. Free cancellation up to 24 hrs before · then 50%.</p>
+          </section>
+
+          <!-- DONE -->
+          <section class="screen" data-screen="done">
+            <div class="done">
+              <div class="tick">✓</div>
+              <h2>You're in!</h2>
+              <p>Saturday 21 Jun · 5:30 AM at Nandi base camp.</p>
+              <p>Hemant has your spot. We'll remind you the evening before with the exact meet point.</p>
+            </div>
+            <div class="stack" style="margin-top:8px">
+              <button class="btn" onclick="goChat('explorer')">💬 Open the group chat</button>
+              <button class="btn ghost mut" onclick="go('activities')">See it in Activities</button>
+            </div>
+            <p class="fineprint" style="margin-top:14px">You're now in the ride's group chat with Hemant &amp; 14 others. After the ride, you'll be invited to share how it went →</p>
+          </section>
+
+          <!-- POST-COMPLETION PROMPT -->
+          <section class="screen" data-screen="prompt">
+            <div class="celebrate"><div class="big">🚴</div><h2>Nice ride, Sneha!</h2><p>You just finished a 28 km sunrise climb. Share a moment?</p></div>
+            <div class="recapcard">
+              <div class="r"><div class="ic">🚴</div><div><b>Nandi Hills sunrise trail ride</b><small>SAT 21 JUN · hosted by Hemant</small></div></div>
+              <div class="ratebox"><p>How was Hemant as a host?</p><div class="stars" data-stars><span>★</span><span>★</span><span>★</span><span>★</span><span>★</span></div></div>
+            </div>
+            <div class="stack"><button class="btn" onclick="go('compose')">📷 Add photos &amp; share</button><button class="btn ghost mut" onclick="go('feed')">Maybe later</button></div>
+          </section>
+
+          <!-- COMPOSE -->
+          <section class="screen" data-screen="compose">
+            <div class="backhd"><span class="x" onclick="go('prompt')">Cancel</span><b>New post</b><span class="share" onclick="go('feed')">Share</span></div>
+            <div class="photogrid"><div class="ph"></div><div class="ph"></div><div class="add">＋</div></div>
+            <div class="capinput">Worth the 4 AM alarm. That climb, then the whole city waking up below us…</div>
+            <div class="attach"><span class="ic">🚴</span><div><b>Nandi Hills sunrise trail ride</b><small>tagged · hosted by Hemant · joinable</small></div><span class="x">✕</span></div>
+            <div style="font-size:11.5px;font-weight:700;padding:8px 16px 4px">Who can see this?</div>
+            <div class="visrow"><div class="v on">Followers<small>your people</small></div><div class="v">Indiranagar<small>nearby explorers</small></div></div>
+            <p class="fineprint">Tagging the activity lets anyone who sees this tap through and join the next one.</p>
+          </section>
+
+          <!-- FEED -->
+          <section class="screen" data-screen="feed">
+            <div class="feedhd">
+              <div class="row"><h2>Feed</h2><div class="ic"><button onclick="go('people')">👤＋</button><button>🔔</button></div></div>
+              <div class="ftabs"><button class="on">Following</button><button>Nearby</button></div>
+            </div>
+            <article class="post">
+              <div class="phd"><div class="pav">SN</div><div class="who"><b>Sneha R.</b><div class="l2">Indiranagar · just now</div></div></div>
+              <div class="actref" onclick="go('detail')"><span>🚴</span><b>Nandi Hills sunrise trail ride</b><span class="go">›</span></div>
+              <div class="media g2"><i></i><i></i></div>
+              <div class="pcap">Worth the 4 AM alarm. That climb, then the whole city waking up below us. ★★★★★ for Hemant.</div>
+              <div class="eng"><span>♡ <b>—</b></span><span>💬 <b>—</b></span><span>↗ share</span></div>
+            </article>
+            <article class="post">
+              <div class="phd"><div class="pav" onclick="go('profile-other')">HM</div><div class="who"><b>Hemant</b><div class="l2">⭐ 4.9 · 2 hrs ago</div></div><button class="followbtn on" data-follow>Following</button></div>
+              <div class="media">▢ 14 riders at the summit</div>
+              <div class="pcap"><b>Brilliant energy today</b> — 14 of you made the climb. Next Saturday's ride is open, 6 spots.</div>
+              <div class="next" onclick="go('detail')"><span class="o">🚴</span><div><b>Join next Saturday's ride</b><small>Sat 28 Jun · 5:30 AM · ₹350 · 6 left</small></div><span class="go">→</span></div>
+              <div class="eng"><span>♡ <b>62</b></span><span>💬 <b>9</b></span><span>↗ share</span></div>
+            </article>
+            <div class="wtf">
+              <div class="lbl">People from your activities</div>
+              <div class="scroller">
+                <div class="pcard"><div class="pav">AM</div><b>Amir M.</b><small>You rode together</small><button class="followbtn" data-follow>Follow</button></div>
+                <div class="pcard"><div class="pav">SI</div><b>Studio Indira</b><small>Hosts art jams nearby</small><button class="followbtn" data-follow>Follow</button></div>
+                <div class="pcard"><div class="pav">PK</div><b>Priya K.</b><small>2 mutuals</small><button class="followbtn" data-follow>Follow</button></div>
+              </div>
+            </div>
+            <article class="post">
+              <div class="phd"><div class="pav">SI</div><div class="who"><b>Studio Indira</b><div class="l2">HSR · yesterday</div></div><button class="followbtn" data-follow>Follow</button></div>
+              <div class="actref"><span class="tag soul"><span class="k"></span>Feel · Art</span><b style="margin-left:2px">Watercolour &amp; wine jam</b><span class="go">›</span></div>
+              <div class="media">▢ sunday's canvases</div>
+              <div class="pcap">Twelve very different takes on the same skyline 🎨 Next jam drops Thursday.</div>
+              <div class="eng"><span>♡ <b>41</b></span><span>💬 <b>5</b></span><span>↗ share</span></div>
+            </article>
+            <div style="height:6px"></div>
+          </section>
+
+          <!-- PROFILE (other) -->
+          <section class="screen" data-screen="profile-other">
+            <div class="cover"><div class="back" onclick="go('feed')">‹</div></div>
+            <div class="pf">
+              <div class="pfav">HM</div>
+              <div class="nm"><h2>Hemant</h2><span class="badge host">Host</span></div>
+              <p class="bio">Leads sunrise rides &amp; weekend trails around Bengaluru. Coffee at every summit. ☕</p>
+              <div class="pfstats"><div><b>1,240</b><br><small>followers</small></div><div><b>318</b><br><small>following</small></div><div><b>23</b><br><small>activities</small></div></div>
+              <div class="stack" style="padding:0;flex-direction:row"><button class="btn" style="flex:1" data-followbig onclick="toggleBig(this)">Follow</button><button class="btn ghost mut" style="flex:1">Message</button></div>
+            </div>
+            <div class="uplabel">Upcoming activities</div>
+            <div class="upc" onclick="go('detail')"><div class="ic">🚴</div><div><b>Nandi Hills sunrise ride</b><small>SAT 28 JUN · 5:30 AM · 6 left</small></div><span class="price">₹350</span></div>
+            <div class="upc" onclick="go('detail')"><div class="ic">🚵</div><div><b>Turahalli forest trail</b><small>SUN 29 JUN · 6:00 AM · 11 left</small></div><span class="price">₹400</span></div>
+            <div class="uplabel">Posts</div>
+            <div class="grid3"><div class="t"></div><div class="t"></div><div class="t"></div><div class="t"></div><div class="t"></div><div class="t"></div></div>
+            <div style="height:10px"></div>
+          </section>
+
+          <!-- PEOPLE -->
+          <section class="screen" data-screen="people">
+            <div class="backhd"><span class="x" onclick="go('feed')">‹</span><b>Find your people</b><span style="width:14px"></span></div>
+            <div class="ftabs" style="padding:0 16px;border-bottom:1px solid var(--line)"><button class="on">Suggested</button><button>Hosts</button><button>Explorers</button></div>
+            <div class="uplabel">Hosts you've joined</div>
+            <div class="prow"><div class="pav" onclick="go('profile-other')">HM</div><div style="min-width:0"><div class="nm"><b>Hemant</b><span class="badge host">Host</span></div><small>⭐ 4.9 · you've joined 2 rides</small></div><button class="followbtn on" data-follow>Following</button></div>
+            <div class="prow"><div class="pav">SI</div><div style="min-width:0"><div class="nm"><b>Studio Indira</b><span class="badge host">Host</span></div><small>Feel · Art · 1 activity together</small></div><button class="followbtn" data-follow>Follow</button></div>
+            <div class="uplabel">Explorers you've met</div>
+            <div class="prow"><div class="pav">AM</div><div style="min-width:0"><div class="nm"><b>Amir M.</b><span class="badge exp">Explorer</span></div><small>You rode together on 21 Jun</small></div><button class="followbtn" data-follow>Follow</button></div>
+            <div class="prow"><div class="pav">PK</div><div style="min-width:0"><div class="nm"><b>Priya K.</b><span class="badge exp">Explorer</span></div><small>2 mutual follows</small></div><button class="followbtn" data-follow>Follow</button></div>
+            <div class="uplabel">Popular in Indiranagar</div>
+            <div class="prow"><div class="pav">DY</div><div style="min-width:0"><div class="nm"><b>Dyu Book Club</b><span class="badge host">Host</span></div><small>Learn · 480 followers</small></div><button class="followbtn" data-follow>Follow</button></div>
+            <div style="height:12px"></div>
+          </section>
+
+          <!-- GROUP CHAT -->
+          <section class="screen" data-screen="chat">
+            <div class="chathd">
+              <span class="x" onclick="go('activities')">‹</span>
+              <div class="ct"><b id="chat-title">Nandi Hills ride</b><small id="chat-sub">15 members · Hemant is admin</small></div>
+              <span class="ci" onclick="openInfo()">ⓘ</span>
+            </div>
+            <div class="pinned" onclick="openInfo()">
+              <div class="pintop">📌 Pinned · activity details</div>
+              <div class="pinrow"><div class="ic" id="pin-ic">🚴</div><div><b id="pin-title">Nandi Hills sunrise trail ride</b><small id="pin-meta">SAT 21 JUN · 5:30 AM · Nandi base camp · ₹350</small></div><span class="go">›</span></div>
+            </div>
+            <div class="chatbody">
+              <div id="msgs-explorer">
+                <div class="sys">Sneha joined the group · 15 members</div>
+                <div class="gmsg"><div class="gav">HM</div><div><div class="gn">Hemant <span class="adm">admin</span></div><div class="gb">Welcome everyone! 🚴 Meet at Nandi base camp by 5:30 sharp. Carry water &amp; a helmet — coffee's on me at the top ☕</div></div></div>
+                <div class="gmsg"><div class="gav">AM</div><div><div class="gn">Amir M.</div><div class="gb">Anyone driving from Indiranagar? Happy to carpool.</div></div></div>
+                <div class="gmsg me"><div class="gb">I can! 2 spots, leaving 4:45 from 100 Ft Rd 🚗</div></div>
+                <div class="gmsg"><div class="gav">PK</div><div><div class="gn">Priya K.</div><div class="gb">Grabbing the second spot 🙌</div></div></div>
+                <div class="gmsg"><div class="gav">HM</div><div><div class="gn">Hemant <span class="adm">admin</span></div><div class="gb">Love it — added the carpool to the pinned note. See you all Saturday!</div></div></div>
+              </div>
+              <div id="msgs-host" style="display:none">
+                <div class="sys">You created this group · 8 members</div>
+                <div class="gmsg me"><div class="gb">Morning all! 🌅 We meet at the Cubbon bandstand at 6. Easy 5K, all paces welcome — we regroup every 1K.</div></div>
+                <div class="gmsg"><div class="gav">AM</div><div><div class="gn">Amir M.</div><div class="gb">First time joining a run here — is it beginner friendly?</div></div></div>
+                <div class="gmsg me"><div class="gb">Totally 🙌 Walk-run is fine, no one gets left behind.</div></div>
+                <div class="gmsg"><div class="gav">Rh</div><div><div class="gn">Rhea</div><div class="gb">In! Bringing a friend too 🏃‍♀️</div></div></div>
+              </div>
+            </div>
+            <div class="composer"><div class="field">Message the group…</div><button class="send acc">↑</button></div>
+          </section>
+
+          <!-- MANAGE · READ-ONLY (explorer view) -->
+          <section class="screen" data-screen="manage-readonly">
+            <div class="backhd"><span class="x" onclick="go('chat')">‹</span><b>Hangout details</b><span style="width:14px"></span></div>
+            <div class="pad" style="padding-bottom:4px">
+              <span class="tag body"><span class="k"></span>Move · Cycling</span>
+              <h2 style="margin:8px 0 2px;font-size:18px">Nandi Hills sunrise trail ride</h2>
+              <p style="margin:0;color:var(--muted);font-size:12.5px">A 28 km sunrise climb · intermediate pace</p>
+            </div>
+            <div class="hosted" onclick="go('profile-other')"><div class="hav">HM</div><div><b>Hosted by Hemant</b><small>⭐ 4.9 · only the host can edit this hangout</small></div></div>
+            <div class="pad" style="padding-top:0">
+              <div class="infoline"><span class="ic">📅</span><div><b>Sat 21 Jun · 5:30 AM</b><span>~3 hrs, back by 9 AM</span></div></div>
+              <div class="infoline"><span class="ic">📍</span><div><b>Nandi base camp</b><span>Meet point · 21 km away</span></div></div>
+              <div class="infoline"><span class="ic">👥</span><div><b>14 of 20 going</b><span>view only · you can't change the roster</span></div></div>
+            </div>
+            <div class="sectlabel">Who's coming</div>
+            <div class="pad" style="padding-top:0">
+              <div class="att"><span class="av">HM</span>Hemant <span class="adm" style="font-family:var(--mono);font-size:8px;letter-spacing:.05em;text-transform:uppercase;background:var(--host);color:#fff;padding:1px 5px;border-radius:4px;margin-left:6px">host</span><span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--muted)">admin</span></div>
+              <div class="att"><span class="av">AM</span>Amir M.<span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--muted)">going</span></div>
+              <div class="att"><span class="av">SN</span>Sneha R. (you)<span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--ok)">going</span></div>
+              <div class="att"><span class="av">+11</span>others<span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--muted)">going</span></div>
+            </div>
+            <div class="paysum" style="margin-top:6px">
+              <div class="pl"><span>Your booking</span><span>PAID ₹375</span></div>
+              <div class="pl tot"><span>Cancellation</span><span>free until 24h before</span></div>
+            </div>
+            <div class="stack" style="margin-top:10px">
+              <button class="btn ghost" onclick="goChat('explorer')">💬 Back to group chat</button>
+              <button class="btn ghost mut" onclick="go('activities')">Cancel my booking</button>
+            </div>
+            <div style="height:14px"></div>
+          </section>
+
+          <!-- ASSISTANT -->
+          <section class="screen" data-screen="assistant">
+            <div class="ai-head"><div class="ai-orb">✦</div><div><b>Assistant</b><small>find · plan · coordinate</small></div></div>
+            <div class="pad" style="padding-top:14px">
+              <div class="bubble me">something chill for Sunday evening, near me, under ₹500 — for the soul</div>
+              <div class="bubble bot">On it. Reading you as:
+                <div style="margin-top:6px"><span class="chiplet">Feel</span><span class="chiplet">Sun evening</span><span class="chiplet">≤ ₹500</span><span class="chiplet">Indiranagar ≤3km</span></div>
+              </div>
+              <div class="bubble bot" style="margin-bottom:6px">Three you might love:</div>
+              <div class="opt pick" onclick="go('detail')"><div class="row"><h4>Vinyl listening party · ambient</h4><span class="price">₹300</span></div><p>0.8 km · Fri 8 PM · 24 going · hosted by The Listening Room</p></div>
+              <div class="opt" onclick="go('detail')"><div class="row"><h4>Watercolour &amp; wine art jam</h4><span class="price">₹450</span></div><p>1.1 km · Sun 4 PM · hosted by Studio Indira</p></div>
+              <div class="opt" onclick="go('assistant-orchestrate')"><div class="row"><h4>Get a few friends together?</h4><span class="price">free</span></div><p>I can also pull a group for an open badminton court →</p></div>
+            </div>
+            <div class="composer"><div class="field">Message the assistant…</div><button class="send">↑</button></div>
+          </section>
+
+          <!-- ASSISTANT ORCHESTRATE (open / pickup mode) -->
+          <section class="screen" data-screen="assistant-orchestrate">
+            <div class="ai-head"><div class="ai-orb">✦</div><div><b>Open badminton · pickup</b><small>coordinating · no host needed</small></div></div>
+            <div style="height:10px"></div>
+            <div class="statusbox">
+              <div class="hd"><b>Court held · 28 min left</b><span class="tag">Tonight 8 PM</span></div>
+              <div class="roster">
+                <p style="margin:0 0 4px;font-size:12px;color:var(--muted)">Availability poll · 3 of 4 in</p>
+                <div class="progress"><i style="width:75%"></i></div>
+                <div class="r"><span class="av">SN</span>Sneha (you)<span class="st in">✓ in</span></div>
+                <div class="r"><span class="av">AM</span>Amir M.<span class="st in">✓ in · paid</span></div>
+                <div class="r"><span class="av">PK</span>Priya K.<span class="st in">✓ in</span></div>
+                <div class="r"><span class="av">JT</span>Jonathan T.<span class="st wait">… nudged</span></div>
+              </div>
+            </div>
+            <div class="split">
+              <div class="pl"><span>Smash Arena · 1 hour</span><span>₹450</span></div>
+              <div class="pl"><span>Split · 4 players</span><span>₹113 ea</span></div>
+              <div class="pl"><span>Your share</span><span>₹113</span></div>
+            </div>
+            <div class="stack"><button class="btn ai" onclick="go('done')">Confirm &amp; pay my share</button><button class="btn ghost mut" onclick="go('assistant')">Back</button></div>
+            <p class="fineprint">No host here — when there's no organiser, the assistant books the venue and splits the cost.</p>
+          </section>
+
+          <!-- ACTIVITIES -->
+          <section class="screen" data-screen="activities">
+            <div class="h2">Your activities</div>
+            <p class="sub16">Tap any card to jump into its group chat.</p>
+            <div class="sectlabel">You're hosting</div>
+            <div class="bk" onclick="goChat('host')"><div class="row1"><h3>Cubbon Park sunrise run</h3><span class="paid" style="background:var(--accent-soft);color:var(--accent)">8/15 · LIVE</span></div><div class="when">SUN 22 JUN · 6:00 AM · you're the host</div><div class="avatars"><span>SN</span><span>AM</span><span>Rh</span><span>+5</span></div><button class="chatlink" onclick="event.stopPropagation();goChat('host')">💬 Open group chat · 8 members</button></div>
+            <div class="sectlabel">You've joined</div>
+            <div class="bk" onclick="goChat('explorer')"><div class="row1"><h3>Nandi Hills sunrise ride</h3><span class="paid">PAID ₹375</span></div><div class="when">SAT 21 JUN · 5:30 AM · hosted by Hemant</div><div class="avatars"><span>HM</span><span>AM</span><span>PK</span><span>+11</span></div><button class="chatlink" onclick="event.stopPropagation();goChat('explorer')">💬 Open group chat · 15 members</button></div>
+            <div class="bk" onclick="goChat('explorer')"><div class="row1"><h3>Vinyl listening party</h3><span class="paid">PAID ₹300</span></div><div class="when">FRI 27 JUN · 8:00 PM · The Listening Room</div><div class="avatars"><span>SI</span><span>JT</span><span>+22</span></div><button class="chatlink" onclick="event.stopPropagation();goChat('explorer')">💬 Open group chat · 24 members</button></div>
+            <div style="height:10px"></div>
+          </section>
+
+          <!-- YOU (own profile) -->
+          <section class="screen" data-screen="you">
+            <div class="phead"><div class="pfav">SN</div><h2>Sneha R.</h2><p>📍 Indiranagar · joined Apr 2026</p></div>
+            <div class="stats"><div><b>180</b><small>FOLLOWERS</small></div><div><b>97</b><small>FOLLOWING</small></div><div><b>4.8★</b><small>RELIABILITY</small></div></div>
+            <div class="sectlabel">Interests &amp; level</div>
+            <div class="chiprow"><span class="selchip on">🚴 Cycling · Intermediate</span><span class="selchip on">🎧 Music · Feel</span></div>
+            <div class="hostcta" onclick="go('create-hangout')"><div class="ic">＋</div><div><b>Host a hangout</b><small>Got a plan and a place? Post it in seconds — we bring the people.</small></div><span class="go">→</span></div>
+            <div class="listrow" onclick="go('activities')"><span class="ic">🎟️</span>Your activities<span class="ch">›</span></div>
+            <div class="listrow" onclick="go('people')"><span class="ic">👥</span>Following &amp; followers<span class="ch">›</span></div>
+            <div class="listrow"><span class="ic">💳</span>Payments<span class="ch">›</span></div>
+            <div class="listrow"><span class="ic">⚙️</span>Settings<span class="ch">›</span></div>
+            <div style="height:12px"></div>
+          </section>
+
+          <!-- CREATE A HANGOUT (post-style) -->
+          <section class="screen" data-screen="create-hangout">
+            <div class="backhd"><span class="x" onclick="go('map')">Cancel</span><b>Create a hangout</b><span class="share" onclick="go('host-manage')">Post</span></div>
+            <div class="photogrid"><div class="add">＋ add a photo</div></div>
+            <div class="capinput" style="color:var(--ink);font-weight:600;font-size:15px">Cubbon Park sunrise run 🌅 — easy 5K, all paces, we regroup every 1K</div>
+            <div class="sectlabel">The essentials <span style="font-family:var(--sans);text-transform:none;letter-spacing:0;color:var(--faint)">tap to set · most are optional</span></div>
+            <div class="attach"><span class="ic">📍</span><div><b>Cubbon bandstand</b><small>meet point · tap to change</small></div><span class="x">›</span></div>
+            <div class="attach"><span class="ic">🕐</span><div><b>Sun 22 Jun · 6:00 AM</b><small>about 1 hr</small></div><span class="x">›</span></div>
+            <div class="attach"><span class="ic">👥</span><div><b>Up to 15 people</b><small>optional cap</small></div><span class="x">›</span></div>
+            <div class="attach"><span class="ic">💸</span><div><b>Free</b><small>or add a small fee</small></div><span class="x">›</span></div>
+            <div class="attach"><span class="ic">✦</span><div><b>Move · Running</b><small>auto-tagged for you</small></div><span class="x">edit</span></div>
+            <div class="creed ai">
+              <span class="ce">✦</span>
+              <div><b>Maidan brings the people</b><p>The moment you post, we pin it on the map, tag it, and ping nearby explorers who'd love this. <em>You just show up and host.</em></p></div>
+            </div>
+            <div class="creed">
+              <span class="ce">🌱</span>
+              <div><b>The Maidan way</b><p>Charging? Price to cover effort, not to profit — keep it accessible. Or make it free; the best hangouts spread on their own.</p></div>
+            </div>
+            <div class="stack" style="margin-top:6px"><button class="btn" onclick="go('host-manage')">Post hangout</button></div>
+            <div style="height:14px"></div>
+          </section>
+
+          <!-- MANAGE YOUR HANGOUT (light) -->
+          <section class="screen" data-screen="host-manage">
+            <div class="backhd"><span class="x" onclick="go('activities')">‹</span><b>Your hangout</b><span style="width:14px"></span></div>
+            <div class="h2">Cubbon Park sunrise run</div>
+            <p class="sub16">SUN 22 JUN · 6:00 AM · <span style="color:var(--ok)">● Live on the map</span></p>
+            <div class="stathd"><div class="row"><h3>8 / 15 going</h3><span class="tag body"><span class="k"></span>Free · open run</span></div><div class="capbar"><i style="width:53%"></i></div><div class="capnums"><span>7 spots left</span><span>no payout · free hangout</span></div></div>
+            <div class="nudge"><div class="o">✦</div><p><b>Want a fuller group?</b> I can ping ~30 nearby runners who match.</p><button onclick="go('host-manage')">Promote</button></div>
+            <div class="sectlabel">Who's coming <a onclick="goChat('host')">Open group chat</a></div>
+            <div class="pad" style="padding-top:0">
+              <div class="att"><span class="av">AM</span>Amir M.<span class="pay" style="background:var(--fill);color:var(--muted)">RSVP</span><span class="chk on" onclick="this.classList.toggle('on')">✓</span></div>
+              <div class="att"><span class="av">Rh</span>Rhea<span class="pay" style="background:var(--fill);color:var(--muted)">RSVP</span><span class="chk" onclick="this.classList.toggle('on')">✓</span></div>
+              <div class="att"><span class="av">JT</span>Jonathan T.<span class="pay" style="background:var(--fill);color:var(--muted)">RSVP</span><span class="chk" onclick="this.classList.toggle('on')">✓</span></div>
+              <div class="att"><span class="av">+5</span>others<span class="pay" style="background:var(--fill);color:var(--muted)">RSVP</span><span class="chk" onclick="this.classList.toggle('on')">✓</span></div>
+            </div>
+            <div class="stack"><button class="btn ghost mut" onclick="go('create-hangout')">Edit hangout</button></div>
+            <div style="height:14px"></div>
+          </section>
+
+        </div><!-- /view -->
+
+        <nav class="nav" id="nav"></nav>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ PANEL ============ -->
+  <div class="panel">
+    <div class="now" id="p-now">START HERE</div>
+    <h1 id="p-title">Maidan — full prototype</h1>
+    <p class="sub" id="p-sub">Pick a journey to walk it step by step, or roam free with the phone's nav.</p>
+
+    <div class="journeys">
+      <div class="lbl">Follow a journey</div>
+      <div class="jbtns" id="jbtns"></div>
+      <div class="stepper" id="stepper">
+        <div class="stepdots" id="stepdots"></div>
+        <div class="nowstep" id="nowstep"></div>
+        <div class="ctrl"><button id="prevbtn" onclick="step(-1)">‹ Back</button><button class="prim" id="nextbtn" onclick="step(1)">Next ›</button></div>
+      </div>
+    </div>
+
+    <div class="note" id="p-note"></div>
+
+    <div class="index">
+      <div class="lbl">All screens — tap to jump</div>
+      <div class="flowgrp"><div class="gname"><span class="pip" style="background:var(--accent)"></span>EXPLORER · DISCOVER → JOIN</div>
+        <button data-jump="login"><span class="num">›</span>Log in · phone</button>
+        <button data-jump="otp"><span class="num">›</span>Verify OTP</button>
+        <button data-jump="map"><span class="num">›</span>Map home</button>
+        <button data-jump="detail"><span class="num">›</span>Activity detail</button>
+        <button data-jump="pay"><span class="num">›</span>Join &amp; pay</button>
+        <button data-jump="done"><span class="num">›</span>Confirmed</button>
+        <button data-jump="chat"><span class="num">›</span>Group chat</button>
+        <button data-jump="manage-readonly"><span class="num">›</span>Hangout details (read-only)</button>
+      </div>
+      <div class="flowgrp"><div class="gname"><span class="pip" style="background:var(--soul)"></span>SOCIAL · SHARE → FOLLOW</div>
+        <button data-jump="prompt"><span class="num">›</span>Post-completion prompt</button>
+        <button data-jump="compose"><span class="num">›</span>Compose post</button>
+        <button data-jump="feed"><span class="num">›</span>Feed</button>
+        <button data-jump="profile-other"><span class="num">›</span>Profile · follow</button>
+        <button data-jump="people"><span class="num">›</span>Find people</button>
+      </div>
+      <div class="flowgrp"><div class="gname"><span class="pip" style="background:var(--ai)"></span>ASSISTANT</div>
+        <button data-jump="assistant"><span class="num">›</span>Ask · options</button>
+        <button data-jump="assistant-orchestrate"><span class="num">›</span>Pickup coordination</button>
+      </div>
+      <div class="flowgrp"><div class="gname"><span class="pip" style="background:var(--ink)"></span>ACCOUNT</div>
+        <button data-jump="activities"><span class="num">›</span>Your activities</button>
+        <button data-jump="you"><span class="num">›</span>You</button>
+      </div>
+      <div class="flowgrp"><div class="gname"><span class="pip" style="background:var(--host)"></span>HOST A HANGOUT · POST → RUN</div>
+        <button data-jump="create-hangout"><span class="num">›</span>Create a hangout</button>
+        <button data-jump="host-manage"><span class="num">›</span>Your hangout · manage</button>
+      </div>
+    </div>
+    <div class="hint">One canonical thread runs through it all — Hemant's Nandi Hills ride appears on the map, in the booking, the feed, and his profile.</div>
+  </div>
+
+</div>
+
+<script>
+/* ---------------- screen metadata ---------------- */
+const SC={
+  login:{tab:null,mode:'explorer',navOff:true,now:'ENTRY · LOG IN',title:'Log in \u00b7 phone',note:['Phone + OTP, no passwords','The lowest-friction entry for India \u2014 a number people already trust, verified by a one-time code. Location isn\u2019t asked here; it\u2019s detected on the map.']},
+  otp:{tab:null,mode:'explorer',navOff:true,now:'ENTRY · VERIFY',title:'Verify OTP',note:['Forgiving by default','Auto-read where the OS allows, a resend timer, and an edit-number escape hatch \u2014 nobody gets stuck at the door.']},
+  map:{tab:'map',mode:'explorer',now:'EXPLORER · HOME',title:'Map home',note:['The map is the home','Open the app and the neighbourhood is already alive. Location is auto-detected (tap the pill by the search to change it), and Move / Learn / Feel are the colour key and filter \u2014 tags do the work while \u201cmind, body & soul\u201d stays the caption.']},
+  detail:{tab:null,mode:'explorer',navOff:true,now:'EXPLORER · ACTIVITY',title:'Activity detail',note:['The host is the hero','You commit to a stranger\u2019s activity, so reputation (\u26054.9 \u00b7 23 led) does the persuading. Price + Join stay sticky.']},
+  pay:{tab:null,mode:'explorer',navOff:true,now:'EXPLORER · PAY',title:'Join & pay',note:['Mutual respect, built in','Open ticketing (host \u2190 explorer), plus a reminder of the effort the host put in. Both sides are nudged to value each other\u2019s time \u2014 that reciprocity is what lets a community thrive.']},
+  done:{tab:null,mode:'explorer',navOff:true,now:'EXPLORER · CONFIRMED',title:'Confirmed',note:['Close the loop','Restate when/where, promise a reminder, and tee up the post-completion share.']},
+  prompt:{tab:null,mode:'explorer',navOff:true,now:'SOCIAL · TRIGGER',title:'Post-completion prompt',note:['Content at peak feeling','Every finished activity prompts a post + host rating, right when people want to share. The feed never starts empty.']},
+  compose:{tab:null,mode:'explorer',navOff:true,now:'SOCIAL · COMPOSE',title:'Compose post',note:['Every post is a soft ad','The tagged activity lets anyone tap through and join the next one.']},
+  feed:{tab:'feed',mode:'explorer',now:'SOCIAL · FEED',title:'Feed',note:['Following + Nearby','Nearby seeds discovery on day one; a host recap carries \u201cJoin next ride \u2192\u201d \u2014 social proof and CTA in one card.']},
+  'profile-other':{tab:null,mode:'explorer',navOff:true,now:'SOCIAL · PROFILE',title:'Profile · follow & rebook',note:['Follow \u2192 rebook','A followed host\u2019s page leads with upcoming activities, turning the follow straight back into a booking.']},
+  people:{tab:null,mode:'explorer',navOff:true,now:'SOCIAL · DISCOVER',title:'Find your people',note:['Real ties beat algorithms','Suggestions are grounded \u2014 hosts you\u2019ve joined, explorers you physically met.']},
+  chat:{tab:null,mode:'explorer',navOff:true,now:'COMMUNITY · GROUP CHAT',title:'Activity group chat',note:['Enrol \u2192 you\u2019re in the room','Joining auto-adds you to the group \u2014 details pinned up top, everyone talking. The \u24d8 icon opens the activity: full controls if you\u2019re the host, a read-only view if you joined.']},
+  'manage-readonly':{tab:null,mode:'explorer',navOff:true,now:'COMMUNITY · DETAILS','title':'Hangout details (read-only)',note:['Same info, no controls','An explorer\u2019s view of a hangout they joined \u2014 details, who\u2019s coming, their booking. They can leave or open the chat, but only the host can edit. Mirrors the host\u2019s manage screen without the levers.']},
+  assistant:{tab:'assistant',mode:'explorer',now:'ASSISTANT',title:'Ask · options',note:['Intent \u2192 shortlist','Plain language becomes a ranked, comparable set of activities to join.']},
+  'assistant-orchestrate':{tab:null,mode:'explorer',navOff:true,now:'ASSISTANT · PICKUP',title:'Pickup coordination',note:['The lighter, host-less path','When there\u2019s no host, the assistant books a shared venue and splits the cost \u2014 the one place that orchestration still lives.']},
+  activities:{tab:'activities',mode:'explorer',now:'ACCOUNT',title:'Your activities',note:['Everything you\u2019ve committed to','Hosted joins and pickup games, with payment state.']},
+  you:{tab:'you',mode:'explorer',now:'ACCOUNT',title:'You',note:['Hosting is an action, not a mode','No separate host world to switch into \u2014 \u201cCreate a hangout\u201d is right here and on the map. Lowering this barrier is the whole cold-start strategy.']},
+  'create-hangout':{tab:null,mode:'explorer',navOff:true,now:'SUPPLY · CREATE',title:'Create a hangout',note:['Hosting = posting','Supply is the hard side of any marketplace, so creating is reframed as a quick social post, not a business form. Pricing and caps are optional and tucked away; a free hangout takes seconds.']},
+  'host-manage':{tab:null,mode:'explorer',navOff:true,now:'SUPPLY · MANAGE',title:'Your hangout',note:['Light-touch management','See who\u2019s coming, open the group chat, and \u2014 the cold-start payoff \u2014 let the assistant ping nearby people to fill it. The host\u2019s real fear (\u201cwill anyone come?\u201d) is answered by Maidan, not the host.']},
+};
+
+const NAV_EXP=`<button data-nav="map" onclick="go('map')"><span class="ni">⌂</span>Map</button>
+  <button data-nav="feed" onclick="go('feed')"><span class="ni">◫</span>Feed</button>
+  <button class="center" data-nav="assistant" onclick="go('assistant')"><span class="ni">✦</span></button>
+  <button data-nav="activities" onclick="go('activities')"><span class="ni">◰</span>Activities</button>
+  <button data-nav="you" onclick="go('you')"><span class="ni">👤</span>You</button>`;
+
+/* ---------------- journeys ---------------- */
+const JOURNEYS={
+  A:{name:'First-time Explorer',desc:'log in → join → chat → share',color:'var(--accent)',seq:['login','otp','map','detail','pay','done','chat','prompt','compose','feed']},
+  B:{name:'Host a hangout',desc:'post in seconds → fill → run',color:'var(--host)',seq:['create-hangout','host-manage']},
+  C:{name:'Social rebooking',desc:'a post drives a booking',color:'var(--soul)',seq:['feed','profile-other','detail','pay','done']},
+  D:{name:'Assistant',desc:'ask → coordinate a pickup',color:'var(--ai)',seq:['assistant','assistant-orchestrate','done']},
+  E:{name:'Find & follow',desc:'build your graph',color:'var(--mind)',seq:['people','profile-other','feed']},
+};
+let curJ=null, curIdx=0;
+
+function renderJourneys(){
+  document.getElementById('jbtns').innerHTML=Object.entries(JOURNEYS).map(([k,j])=>
+    `<button data-j="${k}" onclick="selectJourney('${k}')"><span class="ji" style="background:${j.color}">${k}</span><span><b>${j.name}</b><small>${j.desc}</small></span></button>`).join('');
+}
+function selectJourney(k){
+  curJ=k;curIdx=0;
+  document.querySelectorAll('#jbtns button').forEach(b=>b.classList.toggle('on',b.dataset.j===k));
+  document.getElementById('stepper').classList.add('show');
+  go(JOURNEYS[k].seq[0],true);
+  renderStepper();
+}
+function step(d){
+  if(!curJ)return;const seq=JOURNEYS[curJ].seq;
+  curIdx=Math.max(0,Math.min(seq.length-1,curIdx+d));
+  go(seq[curIdx],true);renderStepper();
+}
+function renderStepper(){
+  const seq=JOURNEYS[curJ].seq;
+  document.getElementById('stepdots').innerHTML=seq.map((s,i)=>`<i class="${i<curIdx?'done':i===curIdx?'on':''}"></i>`).join('');
+  document.getElementById('nowstep').innerHTML=`Step ${curIdx+1} of ${seq.length} · <b>${SC[seq[curIdx]].title}</b>`;
+  document.getElementById('prevbtn').disabled=curIdx===0;
+  const nb=document.getElementById('nextbtn');
+  nb.textContent=curIdx===seq.length-1?'Done ✓':'Next ›';
+}
+
+/* ---------------- core navigation ---------------- */
+function go(id,fromJourney){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.dataset.screen===id));
+  document.getElementById('view').scrollTop=0;
+  const m=SC[id];
+  const nav=document.getElementById('nav');
+  nav.className='nav'+(m.navOff?' hidden':'');
+  nav.innerHTML=NAV_EXP;
+  nav.querySelectorAll('button[data-nav]').forEach(b=>b.classList.toggle('on',b.dataset.nav===m.tab));
+  document.querySelectorAll('.index button').forEach(b=>b.classList.toggle('on',b.dataset.jump===id));
+  document.getElementById('p-now').textContent=m.now;
+  document.getElementById('p-title').textContent=m.title;
+  document.getElementById('p-sub').textContent='';
+  document.getElementById('p-note').className='note'+(id.indexOf('create-hangout')===0?' host':(id.indexOf('assistant')===0?' ai':''));
+  document.getElementById('p-note').innerHTML=`<h4>${m.note[0]}</h4><p>${m.note[1]}</p>`;
+  if(id==='chat')applyChat();
+  // if jumped off a journey via index/nav, detach stepper tracking
+  if(!fromJourney && curJ && JOURNEYS[curJ].seq[curIdx]!==id){
+    const seq=JOURNEYS[curJ].seq;const at=seq.indexOf(id);
+    if(at>=0){curIdx=at;renderStepper();}
+  }
+}
+document.querySelectorAll('.index button').forEach(b=>b.addEventListener('click',()=>go(b.dataset.jump)));
+
+/* ---------------- group chat role-awareness ---------------- */
+let chatRole='explorer';
+function applyChat(){
+  const host=chatRole==='host';
+  document.getElementById('chat-title').textContent=host?'Cubbon Park sunrise run':'Nandi Hills ride';
+  document.getElementById('chat-sub').textContent=host?"8 members · you're the admin":'15 members · Hemant is admin';
+  document.getElementById('pin-ic').textContent=host?'🏃':'🚴';
+  document.getElementById('pin-title').textContent=host?'Cubbon Park sunrise run':'Nandi Hills sunrise trail ride';
+  document.getElementById('pin-meta').textContent=host?'SUN 22 JUN · 6:00 AM · Cubbon bandstand · Free':'SAT 21 JUN · 5:30 AM · Nandi base camp · ₹350';
+  document.getElementById('msgs-host').style.display=host?'':'none';
+  document.getElementById('msgs-explorer').style.display=host?'none':'';
+}
+function goChat(role){chatRole=role;go('chat');}
+function openInfo(){go(chatRole==='host'?'host-manage':'manage-readonly');}
+
+/* ---------------- map ---------------- */
+const EVENTS=[
+  {id:1,cat:'body',x:34,y:48,icon:'🚴',title:'Nandi Hills sunrise ride',place:'Nandi base camp',dist:'21 km',when:'Sat 5:30 AM',extra:'6 left'},
+  {id:2,cat:'body',x:58,y:40,icon:'⚽',title:'5-a-side football',place:'Turf XI · 12th Main',dist:'1.1 km',when:'Sat 7:00 PM',extra:'₹140'},
+  {id:3,cat:'body',x:48,y:60,icon:'🏃',title:'Indiranagar 5K park run',place:'100 Ft Rd loop',dist:'0.5 km',when:'Sun 6:00 AM',extra:'42 going'},
+  {id:4,cat:'mind',x:64,y:55,icon:'📖',title:'Book club · fiction',place:'Dyu Art Café',dist:'0.9 km',when:'Thu 7:30 PM',extra:'6 in'},
+  {id:5,cat:'mind',x:40,y:36,icon:'♟️',title:'Casual chess meetup',place:'Third Wave Coffee',dist:'0.7 km',when:'Sat 5:00 PM',extra:'all levels'},
+  {id:6,cat:'mind',x:72,y:30,icon:'🏺',title:'Intro to pottery',place:'Clay Station',dist:'1.6 km',when:'Sun 11:00 AM',extra:'₹900'},
+  {id:7,cat:'soul',x:46,y:44,icon:'🎧',title:'Vinyl listening party',place:'The Listening Room',dist:'0.8 km',when:'Fri 8:00 PM',extra:'24 going'},
+  {id:8,cat:'soul',x:62,y:66,icon:'🎤',title:'Acoustic open mic',place:'Roxie\u2019s Terrace',dist:'1.3 km',when:'Sat 8:30 PM',extra:'sign-ups'},
+  {id:9,cat:'soul',x:28,y:52,icon:'🎨',title:'Watercolour & wine jam',place:'Studio Indira',dist:'1.1 km',when:'Sun 4:00 PM',extra:'₹750'},
+  {id:10,cat:'soul',x:76,y:48,icon:'🪔',title:'Sound bath & meditation',place:'Atta Galatta',dist:'2.0 km',when:'Sun 7:00 AM',extra:'12 in'},
+];
+const PNAME={body:'Move',mind:'Learn',soul:'Feel'};
+const maparea=document.querySelector('.maparea');const listEl=document.getElementById('list');
+EVENTS.forEach(e=>{
+  const p=document.createElement('div');p.className='pin '+e.cat;p.dataset.cat=e.cat;p.dataset.id=e.id;
+  p.style.left=e.x+'%';p.style.top=e.y+'%';p.innerHTML=`<div class="head"><span>${e.icon}</span></div>`;
+  p.addEventListener('click',ev=>{ev.stopPropagation();selectEvent(e.id)});maparea.appendChild(p);
+});
+listEl.innerHTML=EVENTS.map(e=>`<div class="ev" data-cat="${e.cat}" data-id="${e.id}" onclick="selectEvent(${e.id},true)">
+  <div class="ethumb">${e.icon}</div><div class="ed"><span class="etag"><span class="k"></span>${PNAME[e.cat]}</span>
+  <h4>${e.title}</h4><p>${e.place} · ${e.dist}</p><div class="emeta"><span><b>${e.when}</b></span><span>${e.extra}</span></div></div></div>`).join('');
+function applyFilter(cat){
+  document.querySelectorAll('#chips .chip').forEach(c=>c.classList.toggle('on',c.dataset.cat===cat));
+  document.querySelectorAll('.pin').forEach(p=>p.classList.toggle('hide',!(cat==='all'||p.dataset.cat===cat)));
+  document.querySelectorAll('#list .ev').forEach(ev=>ev.style.display=(cat==='all'||ev.dataset.cat===cat)?'':'none');
+  document.querySelector('.cluster').style.display=cat==='all'?'':'none';
+  document.getElementById('sheet-count').textContent=cat==='all'?128:(cat==='body'?52:cat==='mind'?34:42);
+}
+document.querySelectorAll('#chips .chip').forEach(c=>c.addEventListener('click',e=>{e.stopPropagation();applyFilter(c.dataset.cat);clearSelect()}));
+function selectEvent(id,openDetail){
+  const e=EVENTS.find(x=>x.id===id);if(!e)return;
+  if(openDetail){go('detail');return;}
+  document.querySelectorAll('.pin').forEach(p=>p.classList.toggle('sel',+p.dataset.id===id));
+  document.getElementById('pv-ic').textContent=e.icon;
+  document.getElementById('pv-title').textContent=e.title;
+  document.getElementById('pv-place').textContent=e.place+' · '+e.dist;
+  document.getElementById('pv-meta').innerHTML=`<span><b>${e.when}</b></span><span>${e.extra}</span>`;
+  const pv=document.getElementById('preview');pv.classList.add('show');pv.onclick=()=>go('detail');
+}
+function clearSelect(){document.querySelectorAll('.pin.sel').forEach(n=>n.classList.remove('sel'));document.getElementById('preview').classList.remove('show');}
+maparea.addEventListener('click',clearSelect);
+maparea.addEventListener('click',()=>document.getElementById('locmenu').classList.remove('show'));
+const sheet=document.getElementById('sheet');
+function toggleSheet(){sheet.classList.toggle('open')}
+function openSheet(){sheet.classList.add('open');clearSelect()}
+function resetMap(){applyFilter('all');clearSelect();sheet.classList.remove('open');document.getElementById('locmenu').classList.remove('show')}
+
+/* ---------------- location selector ---------------- */
+function toggleLoc(e){if(e)e.stopPropagation();document.getElementById('locmenu').classList.toggle('show')}
+function pickLoc(name,sub){
+  document.getElementById('locname').textContent=name;
+  document.getElementById('locsub').textContent=sub;
+  document.querySelectorAll('#locmenu .opt-loc').forEach(o=>o.classList.toggle('on',o.querySelector('b').textContent.indexOf(name)>=0||(sub.indexOf('auto')>=0&&o.querySelector('.det'))));
+  document.getElementById('locmenu').classList.remove('show');
+}
+
+/* ---------------- follow / stars ---------------- */
+document.addEventListener('click',e=>{const f=e.target.closest('[data-follow]');if(f){f.classList.toggle('on');f.textContent=f.classList.contains('on')?'Following':'Follow';}});
+function toggleBig(b){const on=b.textContent.trim()==='Following';b.textContent=on?'Follow':'Following';b.style.background=on?'var(--accent)':'#fff';b.style.color=on?'#fff':'var(--muted)';b.style.border=on?'none':'1.5px solid var(--line)';}
+document.querySelectorAll('[data-stars]').forEach(g=>{const sp=[...g.children];sp.forEach((s,i)=>s.addEventListener('click',()=>sp.forEach((x,j)=>x.classList.toggle('on',j<=i))));});
+
+/* init */
+renderJourneys();
+go('login');
+</script>
+</body>
+</html>
