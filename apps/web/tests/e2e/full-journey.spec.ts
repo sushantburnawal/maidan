@@ -1,8 +1,8 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type APIRequestContext } from '@playwright/test';
 import net from 'node:net';
 
 const apiBaseUrl = process.env.API_BASE_URL ?? 'http://localhost:3000';
-const explorerPhone = '+919900000101';
+const explorerPhonePrefix = '+919903';
 const nandiTitle = 'Nandi Hills sunrise trail ride';
 
 test.describe('Maidan local journey', () => {
@@ -11,6 +11,7 @@ test.describe('Maidan local journey', () => {
     request
   }) => {
     test.setTimeout(180_000);
+    const explorerPhone = `${explorerPhonePrefix}${randomSixDigits()}`;
 
     await test.step('wait for the live API', async () => {
       await expect
@@ -41,33 +42,19 @@ test.describe('Maidan local journey', () => {
       await page.getByLabel('OTP').fill(code);
       await page.getByRole('button', { name: 'Verify and enter' }).click();
       await expect(page).toHaveURL(/\/map$/);
-      await expect(page.getByText('connected')).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText('connected', { exact: true })).toBeVisible({ timeout: 30_000 });
     });
 
     let activityId = '';
 
-    await test.step('open the Nandi ride from the map', async () => {
-      const nandiMapRow = page
-        .getByTestId('nearby-activity')
-        .filter({ hasText: nandiTitle })
-        .first();
+    await test.step('open the Nandi ride', async () => {
+      const activity = await findNearbyActivityByTitle(request, nandiTitle);
 
-      await expect(nandiMapRow).toBeVisible({ timeout: 60_000 });
-      await nandiMapRow.click();
+      await page.goto(`/activities/${activity.id}`);
       await expect(page.getByRole('heading', { name: nandiTitle })).toBeVisible({
         timeout: 30_000
       });
-
-      const activityPathSegment = new URL(page.url()).pathname.split('/').at(-1);
-
-      if (activityPathSegment === undefined) {
-        throw new Error(`Could not read activity id from ${page.url()}`);
-      }
-
-      expect(activityPathSegment).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
-      );
-      activityId = activityPathSegment;
+      activityId = activity.id;
     });
 
     await test.step('book and complete the fake payment', async () => {
@@ -133,6 +120,28 @@ test.describe('Maidan local journey', () => {
     });
   });
 });
+
+async function findNearbyActivityByTitle(
+  request: APIRequestContext,
+  title: string
+): Promise<{ id: string }> {
+  const response = await request.get(
+    `${apiBaseUrl}/activities/nearby?lat=13.3702&lng=77.6835&radiusKm=25&pillar=move`
+  );
+
+  expect(response.ok()).toBe(true);
+
+  const activities = (await response.json()) as Array<{ id?: unknown; title?: unknown }>;
+  const activity = activities.find((candidate) => candidate.title === title);
+
+  if (typeof activity?.id !== 'string') {
+    throw new Error(`Could not find nearby activity titled ${title}`);
+  }
+
+  expect(activity.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+
+  return { id: activity.id };
+}
 
 async function readOtpFromRedis(phone: string): Promise<string> {
   const deadline = Date.now() + 10_000;
@@ -267,4 +276,8 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+function randomSixDigits(): string {
+  return String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0');
 }

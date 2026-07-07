@@ -935,12 +935,21 @@ function CreateActivityScreen(): ReactElement {
     }));
   }
 
+  const updateLocation = useCallback((location: GeoPoint): void => {
+    setForm((currentForm) => ({
+      ...currentForm,
+      lat: formatCoordinate(location.lat),
+      lng: formatCoordinate(location.lng)
+    }));
+  }, []);
+
   async function createActivity(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setIsSubmitting(true);
     setError(null);
 
     try {
+      await apiClient.profiles.becomeHost<HostProfileRecord>();
       const createdActivity = await apiClient.activities.create<ApiActivity>({
         title: form.title.trim(),
         description: form.description.trim(),
@@ -1029,28 +1038,32 @@ function CreateActivityScreen(): ReactElement {
             onChange={(event) => updateForm('meetingPoint', event.currentTarget.value)}
           />
         </label>
-        <div className="composer-grid">
-          <label>
-            Latitude
-            <input
-              required
-              step="0.0001"
-              type="number"
-              value={form.lat}
-              onChange={(event) => updateForm('lat', event.currentTarget.value)}
-            />
-          </label>
-          <label>
-            Longitude
-            <input
-              required
-              step="0.0001"
-              type="number"
-              value={form.lng}
-              onChange={(event) => updateForm('lng', event.currentTarget.value)}
-            />
-          </label>
-        </div>
+        <ActivityLocationPicker lat={form.lat} lng={form.lng} onChange={updateLocation} />
+        <details className="coordinate-details">
+          <summary>Advanced coordinates</summary>
+          <div className="composer-grid">
+            <label>
+              Latitude
+              <input
+                required
+                step="0.000001"
+                type="number"
+                value={form.lat}
+                onChange={(event) => updateForm('lat', event.currentTarget.value)}
+              />
+            </label>
+            <label>
+              Longitude
+              <input
+                required
+                step="0.000001"
+                type="number"
+                value={form.lng}
+                onChange={(event) => updateForm('lng', event.currentTarget.value)}
+              />
+            </label>
+          </div>
+        </details>
         <div className="composer-grid">
           <label>
             Price
@@ -1102,6 +1115,154 @@ function CreateActivityScreen(): ReactElement {
   );
 }
 
+interface ActivityLocationPickerProps {
+  lat: string;
+  lng: string;
+  onChange: (location: GeoPoint) => void;
+}
+
+function ActivityLocationPicker({
+  lat,
+  lng,
+  onChange
+}: ActivityLocationPickerProps): ReactElement {
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
+  const markerRef = useRef<maplibregl.Marker | null>(null);
+  const onChangeRef = useRef(onChange);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const selectedLocation = parseComposerLocation(lat, lng) ?? defaultActivityLocation;
+  const initialLocationRef = useRef(selectedLocation);
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  useEffect(() => {
+    if (mapContainerRef.current === null || mapRef.current !== null) {
+      return undefined;
+    }
+
+    const initialLocation = initialLocationRef.current;
+    const map = new maplibregl.Map({
+      attributionControl: false,
+      center: [initialLocation.lng, initialLocation.lat],
+      container: mapContainerRef.current,
+      style: osmStyle,
+      zoom: 12.2
+    });
+    const markerElement = document.createElement('div');
+    markerElement.className = 'composer-location-marker';
+    markerElement.setAttribute('aria-label', 'Selected activity location');
+    const marker = new maplibregl.Marker({
+      anchor: 'bottom',
+      draggable: true,
+      element: markerElement
+    })
+      .setLngLat([initialLocation.lng, initialLocation.lat])
+      .addTo(map);
+
+    const updateSelectedLocation = (location: GeoPoint): void => {
+      marker.setLngLat([location.lng, location.lat]);
+      onChangeRef.current(location);
+    };
+    const handleMapClick = (event: maplibregl.MapMouseEvent): void => {
+      updateSelectedLocation({ lat: event.lngLat.lat, lng: event.lngLat.lng });
+    };
+    const handleMarkerDragEnd = (): void => {
+      const location = marker.getLngLat();
+      onChangeRef.current({ lat: location.lat, lng: location.lng });
+    };
+    const resizeFrame = window.requestAnimationFrame(() => map.resize());
+
+    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left');
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+    map.on('click', handleMapClick);
+    marker.on('dragend', handleMarkerDragEnd);
+    mapRef.current = map;
+    markerRef.current = marker;
+
+    return () => {
+      window.cancelAnimationFrame(resizeFrame);
+      marker.off('dragend', handleMarkerDragEnd);
+      marker.remove();
+      map.off('click', handleMapClick);
+      map.remove();
+      markerRef.current = null;
+      mapRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const nextLocation = parseComposerLocation(lat, lng);
+    const map = mapRef.current;
+    const marker = markerRef.current;
+
+    if (nextLocation === null || map === null || marker === null) {
+      return;
+    }
+
+    const currentLocation = marker.getLngLat();
+
+    if (
+      Math.abs(currentLocation.lat - nextLocation.lat) > 0.000001 ||
+      Math.abs(currentLocation.lng - nextLocation.lng) > 0.000001
+    ) {
+      marker.setLngLat([nextLocation.lng, nextLocation.lat]);
+      map.setCenter([nextLocation.lng, nextLocation.lat]);
+    }
+  }, [lat, lng]);
+
+  function useCurrentLocation(): void {
+    if (!('geolocation' in navigator)) {
+      setLocationError('Browser location is unavailable');
+      return;
+    }
+
+    setLocationError(null);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const location = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        };
+
+        markerRef.current?.setLngLat([location.lng, location.lat]);
+        mapRef.current?.flyTo({ center: [location.lng, location.lat], zoom: 13 });
+        onChange(location);
+      },
+      () => setLocationError('Could not read browser location'),
+      { maximumAge: 30_000, timeout: 5000 }
+    );
+  }
+
+  return (
+    <section className="location-picker" aria-label="Activity location picker">
+      <div className="location-picker-header">
+        <div>
+          <p className="eyebrow">Location</p>
+          <strong>Selected point</strong>
+        </div>
+        <button type="button" onClick={useCurrentLocation}>
+          Use my location
+        </button>
+      </div>
+      <div
+        ref={mapContainerRef}
+        className="location-picker-map"
+        data-testid="activity-location-map"
+      />
+      <div className="location-picker-readout">
+        <span>Coordinates</span>
+        <code data-testid="activity-location-coordinates">
+          {formatCoordinate(selectedLocation.lat)}, {formatCoordinate(selectedLocation.lng)}
+        </code>
+      </div>
+      {locationError !== null ? <p className="inline-error">{locationError}</p> : null}
+    </section>
+  );
+}
+
 function ManageActivityScreen(): ReactElement {
   const navigate = useNavigate();
   const { activityId } = useParams();
@@ -1112,6 +1273,7 @@ function ManageActivityScreen(): ReactElement {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   const loadManageContext = useCallback(async () => {
     if (activityId === undefined) {
@@ -1153,6 +1315,7 @@ function ManageActivityScreen(): ReactElement {
 
     setIsSaving(true);
     setError(null);
+    setSaveMessage(null);
 
     try {
       const updated = await apiClient.activities.update<ApiActivity>(activity.id, {
@@ -1161,6 +1324,7 @@ function ManageActivityScreen(): ReactElement {
       });
 
       setActivity({ ...activity, ...updated });
+      setSaveMessage('Changes saved');
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Unable to save activity');
     } finally {
@@ -1175,6 +1339,7 @@ function ManageActivityScreen(): ReactElement {
 
     setIsSaving(true);
     setError(null);
+    setSaveMessage(null);
 
     try {
       const updated =
@@ -1185,6 +1350,7 @@ function ManageActivityScreen(): ReactElement {
             : await apiClient.activities.archive<ApiActivity>(activity.id);
 
       setActivity({ ...activity, ...updated });
+      setSaveMessage('Status updated');
     } catch (statusError) {
       setError(statusError instanceof Error ? statusError.message : 'Unable to update status');
     } finally {
@@ -1227,24 +1393,34 @@ function ManageActivityScreen(): ReactElement {
       </header>
 
       {error !== null ? <p className="inline-error">{error}</p> : null}
+      {saveMessage !== null ? <p className="inline-success">{saveMessage}</p> : null}
 
       <div className="manage-grid">
         <form className="manage-panel" onSubmit={(event) => void saveBasics(event)}>
           <p className="eyebrow">Basics</p>
           <label>
             Title
-            <input value={title} onChange={(event) => setTitle(event.currentTarget.value)} />
+            <input
+              value={title}
+              onChange={(event) => {
+                setTitle(event.currentTarget.value);
+                setSaveMessage(null);
+              }}
+            />
           </label>
           <label>
             Description
             <textarea
               rows={5}
               value={description}
-              onChange={(event) => setDescription(event.currentTarget.value)}
+              onChange={(event) => {
+                setDescription(event.currentTarget.value);
+                setSaveMessage(null);
+              }}
             />
           </label>
           <button className="primary-button" disabled={isSaving} type="submit">
-            Save changes
+            {isSaving ? 'Saving...' : 'Save changes'}
           </button>
         </form>
 
@@ -2890,6 +3066,30 @@ function formatInr(amount: number): string {
     maximumFractionDigits: 0,
     style: 'currency'
   }).format(amount);
+}
+
+const defaultActivityLocation: GeoPoint = { lat: 13.3702, lng: 77.6835 };
+
+function parseComposerLocation(lat: string, lng: string): GeoPoint | null {
+  const parsedLat = Number(lat);
+  const parsedLng = Number(lng);
+
+  if (
+    !Number.isFinite(parsedLat) ||
+    !Number.isFinite(parsedLng) ||
+    parsedLat < -90 ||
+    parsedLat > 90 ||
+    parsedLng < -180 ||
+    parsedLng > 180
+  ) {
+    return null;
+  }
+
+  return { lat: parsedLat, lng: parsedLng };
+}
+
+function formatCoordinate(value: number): string {
+  return value.toFixed(6);
 }
 
 function defaultActivityComposerState(): ActivityComposerState {

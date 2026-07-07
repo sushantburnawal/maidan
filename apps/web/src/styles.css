@@ -724,6 +724,93 @@ h1 {
   gap: 10px;
 }
 
+.location-picker {
+  display: grid;
+  gap: 10px;
+}
+
+.location-picker-header,
+.location-picker-readout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.location-picker-header strong {
+  display: block;
+  margin-top: 2px;
+  font-size: 15px;
+}
+
+.location-picker-header button {
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 9px 12px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.location-picker-map {
+  height: 280px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--fill);
+}
+
+.composer-location-marker {
+  width: 34px;
+  height: 34px;
+  border: 2px solid #fff;
+  border-radius: 50% 50% 50% 8px;
+  background: var(--accent);
+  box-shadow: 0 8px 18px -10px rgba(20, 24, 33, 0.9);
+  cursor: grab;
+  transform: rotate(45deg);
+}
+
+.composer-location-marker:active {
+  cursor: grabbing;
+}
+
+.location-picker-readout {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.location-picker-readout code {
+  border-radius: 999px;
+  padding: 5px 8px;
+  background: var(--fill);
+  color: var(--ink);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+
+.coordinate-details {
+  display: grid;
+  gap: 10px;
+}
+
+.coordinate-details summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.coordinate-details[open] summary {
+  margin-bottom: 10px;
+}
+
 .manage-screen {
   align-content: start;
 }
@@ -1706,6 +1793,10 @@ h1 {
   .profile-grid,
   .you-grid {
     grid-template-columns: 1fr;
+  }
+
+  .location-picker-map {
+    height: 240px;
   }
 
   .roster-panel,
