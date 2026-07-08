@@ -99,8 +99,9 @@ curl http://localhost:3000/internal/outbox/health
 
 ## Railway Deployment
 
-`infra/railway.json` defines two Dockerfile-backed services, `api` and `ai`, plus managed Postgres
-and Redis plugins. Both services use `/health/ready` for deploy healthchecks.
+`infra/railway.json` defines three Dockerfile-backed services, `api`, `ai`, and `web`, plus managed
+Postgres and Redis plugins. The API and AI services use `/health/ready` for deploy healthchecks. The
+web service builds the Vite app and serves the static output with `infra/web-server.mjs`.
 
 Required shared env vars:
 
@@ -122,6 +123,7 @@ Required API env vars:
 ```sh
 HOST
 PORT
+CORS_ORIGIN
 AI_BASE_URL
 AI_INTERNAL_TOKEN
 JWT_ACCESS_SECRET
@@ -141,6 +143,8 @@ PHONEPE_CLIENT_ID
 PHONEPE_CLIENT_VERSION
 PHONEPE_CLIENT_SECRET
 PHONEPE_MERCHANT_ID
+PHONEPE_CALLBACK_URL
+PHONEPE_REDIRECT_URL
 PHONEPE_WEBHOOK_USERNAME
 PHONEPE_WEBHOOK_PASSWORD
 PHONEPE_WEBHOOK_SECRET
@@ -152,6 +156,15 @@ FCM_PROJECT_ID
 FCM_CLIENT_EMAIL
 FCM_PRIVATE_KEY
 ```
+
+Required web env vars:
+
+```sh
+VITE_API_BASE_URL
+```
+
+Set `VITE_API_BASE_URL=https://<api-domain>` before building the Railway web service, and set
+`CORS_ORIGIN=https://<web-domain>` on the API service after Railway assigns the web domain.
 
 Required AI env vars:
 

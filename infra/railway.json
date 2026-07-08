@@ -26,6 +26,19 @@
         "healthcheckTimeout": 100,
         "restartPolicyType": "ON_FAILURE"
       }
+    },
+    "web": {
+      "rootDirectory": ".",
+      "build": {
+        "builder": "DOCKERFILE",
+        "dockerfilePath": "infra/web.Dockerfile"
+      },
+      "deploy": {
+        "startCommand": "node infra/web-server.mjs",
+        "healthcheckPath": "/",
+        "healthcheckTimeout": 100,
+        "restartPolicyType": "ON_FAILURE"
+      }
     }
   },
   "plugins": {

@@ -81,6 +81,7 @@ export const apiClient = {
     mine: <TResponse>() => request<TResponse[]>('/activities/mine'),
     detail: <TResponse>(activityId: string) =>
       request<TResponse>(`/activities/${activityId}`, { auth: false }),
+    chat: <TResponse>(activityId: string) => request<TResponse>(`/activities/${activityId}/chat`),
     vibe: <TResponse>(activityId: string) =>
       request<TResponse>(`/activities/${activityId}/vibe`, { auth: false }),
     update: <TResponse>(activityId: string, body: UpdateActivityDto) =>
@@ -152,6 +153,10 @@ export const apiClient = {
     delete: (postId: string) => request<void>(`/posts/${postId}`, { method: 'DELETE' })
   },
   chats: {
+    mine: <TResponse>() => request<TResponse[]>('/chats/mine'),
+    members: <TResponse>(chatId: string) => request<TResponse[]>(`/chats/${chatId}/members`),
+    kickMember: <TResponse>(chatId: string, profileId: string) =>
+      request<TResponse>(`/chats/${chatId}/members/${profileId}`, { method: 'DELETE' }),
     messages: <TResponse>(chatId: string, cursor?: string) =>
       request<TResponse>(`/chats/${chatId}/messages`, { query: { cursor } }),
     sendMessageBody: (body: CreateMessageDto) => body

@@ -13,6 +13,8 @@ import {
 
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RealtimeService } from '../realtime/realtime.service';
+import type { ChatListItem } from '../realtime/realtime.types';
 import type {
   ActivityDetailResponse,
   HostedActivityResponse,
@@ -29,7 +31,10 @@ import { UpdateActivityDto } from './dto/update-activity.dto';
 
 @Controller('activities')
 export class ActivitiesController {
-  constructor(private readonly activitiesService: ActivitiesService) {}
+  constructor(
+    private readonly activitiesService: ActivitiesService,
+    private readonly realtimeService: RealtimeService
+  ) {}
 
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -58,6 +63,15 @@ export class ActivitiesController {
     @Param('id', ParseUUIDPipe) activityId: string
   ): Promise<ActivityVibeResponse> {
     return this.activitiesService.getActivityVibe(activityId);
+  }
+
+  @Get(':id/chat')
+  @UseGuards(JwtAuthGuard)
+  async getActivityChat(
+    @CurrentUser('profileId') profileId: string,
+    @Param('id', ParseUUIDPipe) activityId: string
+  ): Promise<ChatListItem> {
+    return this.realtimeService.findActivityChat(profileId, activityId);
   }
 
   @Get(':id')

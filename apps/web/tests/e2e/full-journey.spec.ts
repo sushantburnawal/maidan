@@ -90,9 +90,26 @@ test.describe('Maidan local journey', () => {
       });
     });
 
+    await test.step('reopen the group chat from joined activities', async () => {
+      await page.getByRole('link', { name: 'Activities' }).click();
+      await expect(page).toHaveURL(/\/activities$/);
+      await page.getByRole('button', { name: 'Joined' }).click();
+      await expect(page.getByRole('heading', { name: 'Activity groups' })).toBeVisible({
+        timeout: 30_000
+      });
+      await page.getByTestId('joined-activity-chat-button').first().click();
+      await expect(page).toHaveURL(/\/chats\/.+activityId=/, { timeout: 30_000 });
+      await expect(page.getByRole('heading', { name: nandiTitle })).toBeVisible({
+        timeout: 30_000
+      });
+    });
+
     await test.step('follow Hemant from the activity detail', async () => {
       await page.goto(`/activities/${activityId}`);
       await expect(page.getByRole('heading', { name: nandiTitle })).toBeVisible({
+        timeout: 30_000
+      });
+      await expect(page.getByTestId('activity-detail-chat-button')).toBeVisible({
         timeout: 30_000
       });
 

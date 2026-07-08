@@ -2,6 +2,7 @@ import type {
   Activity,
   ActivityPillar,
   ActivitySlot,
+  ActivityStatus,
   Booking,
   FollowProfileSummaryResponse,
   FollowsPageResponse,
@@ -104,6 +105,34 @@ export interface PaymentWebhookResponse {
 export interface JoinedChatState {
   activityId: string;
   chat: GroupChat;
+}
+
+export interface ChatActivitySummary {
+  id: string;
+  title: string;
+  pillar: ActivityPillar;
+  status: ActivityStatus;
+}
+
+export interface ChatListItem {
+  chat: GroupChat;
+  activity: ChatActivitySummary;
+  role: 'host' | 'member';
+  can_manage: boolean;
+}
+
+export interface ChatMemberSummary {
+  profile_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  joined_at: string;
+  role: 'host' | 'member';
+}
+
+export interface RemoveChatMemberResponse {
+  chat_id: string;
+  profile_id: string;
+  removed: true;
 }
 
 export type ApiPost = Pick<

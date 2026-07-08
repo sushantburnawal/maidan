@@ -16,7 +16,8 @@ import {
   useLocation,
   useNavigate,
   useParams,
-  useSearchParams
+  useSearchParams,
+  type NavigateFunction
 } from 'react-router-dom';
 import maplibregl, { type StyleSpecification } from 'maplibre-gl';
 import type { ActivityPillar, ActivitySlot, Booking, GeoPoint, GroupChat, Payment } from '@maidan/shared';
@@ -26,6 +27,8 @@ import type {
   ApiActivity,
   ActivityDetail,
   ActivityVibe,
+  ChatListItem,
+  ChatMemberSummary,
   ChatMessage,
   CreateBookingResponse,
   FeedPost,
@@ -40,7 +43,8 @@ import type {
   PaginatedMessagesResponse,
   PaymentWebhookResponse,
   PrivateProfile,
-  PublicProfile
+  PublicProfile,
+  RemoveChatMemberResponse
 } from './lib/apiTypes';
 import {
   getAuthTokens,
@@ -619,6 +623,7 @@ interface SutradharMessage {
 interface SutradharFinalEvent {
   activity_ids?: string[];
   demand_signal_id?: string | null;
+  error?: 'rate_limited';
   type: 'final';
 }
 
@@ -803,6 +808,7 @@ function ActivitiesScreen(): ReactElement {
   const [tab, setTab] = useState<ActivitiesTab>('hosting');
   const [hostedActivities, setHostedActivities] = useState<HostedActivity[]>([]);
   const [joinedBookings, setJoinedBookings] = useState<Booking[]>([]);
+  const [groupChats, setGroupChats] = useState<ChatListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -811,13 +817,15 @@ function ActivitiesScreen(): ReactElement {
     setError(null);
 
     try {
-      const [hosting, joined] = await Promise.all([
+      const [hosting, joined, chats] = await Promise.all([
         apiClient.activities.mine<HostedActivity>(),
-        apiClient.bookings.mine<Booking>()
+        apiClient.bookings.mine<Booking>(),
+        apiClient.chats.mine<ChatListItem>()
       ]);
 
       setHostedActivities(hosting);
       setJoinedBookings(joined);
+      setGroupChats(chats);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Unable to load activities');
     } finally {
@@ -828,6 +836,23 @@ function ActivitiesScreen(): ReactElement {
   useEffect(() => {
     void loadActivities();
   }, [loadActivities]);
+
+  const hostedChatByActivityId = useMemo(() => {
+    const chatsByActivityId = new Map<string, ChatListItem>();
+
+    for (const chatItem of groupChats) {
+      if (chatItem.role === 'host') {
+        chatsByActivityId.set(chatItem.activity.id, chatItem);
+      }
+    }
+
+    return chatsByActivityId;
+  }, [groupChats]);
+
+  const joinedGroupChats = useMemo(
+    () => groupChats.filter((chatItem) => chatItem.role === 'member'),
+    [groupChats]
+  );
 
   return (
     <section className="activities-screen">
@@ -870,41 +895,82 @@ function ActivitiesScreen(): ReactElement {
               <p className="muted-copy">Create a hangout when you have a clear plan and capacity.</p>
             </div>
           ) : null}
-          {hostedActivities.map((activity) => (
-            <article className="activity-list-card" key={activity.id}>
-              <div>
-                <p className="eyebrow">{activity.pillar} · {activity.status}</p>
-                <h2>{activity.title}</h2>
-                <p className="muted-copy">
-                  {activity.next_open_slot === null
-                    ? 'No open slots'
-                    : formatSlotDateRange(
-                        activity.next_open_slot.starts_at,
-                        activity.next_open_slot.ends_at
-                      )}
-                </p>
-              </div>
-              <div className="activity-list-actions">
-                <strong>{formatInr(activity.base_price_inr)}</strong>
-                <button
-                  className="secondary-button"
-                  onClick={() => navigate(`/activities/${activity.id}/manage`)}
-                  type="button"
-                >
-                  Manage
-                </button>
-              </div>
-            </article>
-          ))}
+          {hostedActivities.map((activity) => {
+            const activityChat = hostedChatByActivityId.get(activity.id);
+
+            return (
+              <article className="activity-list-card" key={activity.id}>
+                <div>
+                  <p className="eyebrow">{activity.pillar} · {activity.status}</p>
+                  <h2>{activity.title}</h2>
+                  <p className="muted-copy">
+                    {activity.next_open_slot === null
+                      ? 'No open slots'
+                      : formatSlotDateRange(
+                          activity.next_open_slot.starts_at,
+                          activity.next_open_slot.ends_at
+                        )}
+                  </p>
+                </div>
+                <div className="activity-list-actions">
+                  <strong>{formatInr(activity.base_price_inr)}</strong>
+                  {activityChat !== undefined ? (
+                    <button
+                      className="secondary-button"
+                      data-testid="hosted-activity-chat-button"
+                      onClick={() => openChatFromSummary(navigate, activityChat)}
+                      type="button"
+                    >
+                      Open chat
+                    </button>
+                  ) : null}
+                  <button
+                    className="secondary-button"
+                    onClick={() => navigate(`/activities/${activity.id}/manage`)}
+                    type="button"
+                  >
+                    Manage
+                  </button>
+                </div>
+              </article>
+            );
+          })}
         </div>
       ) : (
         <div className="activity-list">
-          {!isLoading && joinedBookings.length === 0 ? (
+          {!isLoading && joinedBookings.length === 0 && joinedGroupChats.length === 0 ? (
             <div className="feed-empty">
               <p className="eyebrow">Joined</p>
               <h2>No bookings yet</h2>
               <p className="muted-copy">Your confirmed and pending activity bookings appear here.</p>
             </div>
+          ) : null}
+          {joinedGroupChats.length > 0 ? (
+            <section className="activity-chat-section">
+              <div className="section-heading">
+                <p className="eyebrow">Group chats</p>
+                <h2>Activity groups</h2>
+              </div>
+              {joinedGroupChats.map((chatItem) => (
+                <article className="activity-list-card" key={chatItem.chat.id}>
+                  <div>
+                    <p className="eyebrow">
+                      {chatItem.activity.pillar} · {chatItem.activity.status}
+                    </p>
+                    <h2>{chatItem.activity.title}</h2>
+                    <p className="muted-copy">{chatItem.chat.title}</p>
+                  </div>
+                  <button
+                    className="secondary-button"
+                    data-testid="joined-activity-chat-button"
+                    onClick={() => openChatFromSummary(navigate, chatItem)}
+                    type="button"
+                  >
+                    Open chat
+                  </button>
+                </article>
+              ))}
+            </section>
           ) : null}
           {joinedBookings.map((booking) => (
             <article className="activity-list-card" key={booking.id}>
@@ -1268,10 +1334,13 @@ function ManageActivityScreen(): ReactElement {
   const { activityId } = useParams();
   const [activity, setActivity] = useState<ActivityDetail | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [activityChat, setActivityChat] = useState<ChatListItem | null>(null);
+  const [chatMembers, setChatMembers] = useState<ChatMemberSummary[]>([]);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [kickingProfileId, setKickingProfileId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
@@ -1286,13 +1355,22 @@ function ManageActivityScreen(): ReactElement {
     setError(null);
 
     try {
-      const [detail, roster] = await Promise.all([
+      const [detail, roster, chatItem] = await Promise.all([
         apiClient.activities.detail<ActivityDetail>(activityId),
-        apiClient.activities.bookings<Booking>(activityId).catch((): Booking[] => [])
+        apiClient.activities.bookings<Booking>(activityId).catch((): Booking[] => []),
+        apiClient.activities.chat<ChatListItem>(activityId).catch((): ChatListItem | null => null)
       ]);
+      const members =
+        chatItem === null
+          ? []
+          : await apiClient.chats
+              .members<ChatMemberSummary>(chatItem.chat.id)
+              .catch((): ChatMemberSummary[] => []);
 
       setActivity(detail);
       setBookings(roster);
+      setActivityChat(chatItem);
+      setChatMembers(members);
       setTitle(detail.title);
       setDescription(detail.description);
     } catch (loadError) {
@@ -1329,6 +1407,28 @@ function ManageActivityScreen(): ReactElement {
       setError(saveError instanceof Error ? saveError.message : 'Unable to save activity');
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function kickChatMember(profileId: string): Promise<void> {
+    if (activityChat === null || kickingProfileId !== null) {
+      return;
+    }
+
+    setKickingProfileId(profileId);
+    setError(null);
+    setSaveMessage(null);
+
+    try {
+      await apiClient.chats.kickMember<RemoveChatMemberResponse>(activityChat.chat.id, profileId);
+      setChatMembers((currentMembers) =>
+        currentMembers.filter((member) => member.profile_id !== profileId)
+      );
+      setSaveMessage('Member removed from chat');
+    } catch (kickError) {
+      setError(kickError instanceof Error ? kickError.message : 'Unable to remove member');
+    } finally {
+      setKickingProfileId(null);
     }
   }
 
@@ -1387,9 +1487,20 @@ function ManageActivityScreen(): ReactElement {
           <p className="eyebrow">Host controls · {activity.status}</p>
           <h1>{activity.title}</h1>
         </div>
-        <button className="secondary-button" onClick={() => navigate(`/activities/${activity.id}`)} type="button">
-          View
-        </button>
+        <div className="header-action-row">
+          {activityChat !== null ? (
+            <button
+              className="secondary-button"
+              onClick={() => openChatFromSummary(navigate, activityChat)}
+              type="button"
+            >
+              Open chat
+            </button>
+          ) : null}
+          <button className="secondary-button" onClick={() => navigate(`/activities/${activity.id}`)} type="button">
+            View
+          </button>
+        </div>
       </header>
 
       {error !== null ? <p className="inline-error">{error}</p> : null}
@@ -1485,6 +1596,40 @@ function ManageActivityScreen(): ReactElement {
               </article>
             ))
           )}
+          {activityChat !== null ? (
+            <div className="chat-member-admin">
+              <div>
+                <p className="eyebrow">Group chat</p>
+                <h2>{activityChat.chat.title}</h2>
+              </div>
+              {chatMembers.length === 0 ? (
+                <p className="muted-copy">No chat members yet.</p>
+              ) : (
+                chatMembers.map((member) => (
+                  <article className="roster-row" key={member.profile_id}>
+                    <div>
+                      <strong>{member.display_name}</strong>
+                      <span>
+                        {member.role} · joined {formatFeedDate(member.joined_at)}
+                      </span>
+                    </div>
+                    {member.role === 'member' ? (
+                      <button
+                        className="secondary-button"
+                        disabled={kickingProfileId !== null}
+                        onClick={() => void kickChatMember(member.profile_id)}
+                        type="button"
+                      >
+                        {kickingProfileId === member.profile_id ? 'Removing...' : 'Kick'}
+                      </button>
+                    ) : (
+                      <span className="member-pill">Admin</span>
+                    )}
+                  </article>
+                ))
+              )}
+            </div>
+          ) : null}
         </section>
       </div>
     </section>
@@ -1953,6 +2098,7 @@ function ActivityDetailScreen(): ReactElement {
   const [activity, setActivity] = useState<ActivityDetail | null>(null);
   const [vibe, setVibe] = useState<ActivityVibe | null>(null);
   const [host, setHost] = useState<PublicProfile | null>(null);
+  const [activityChat, setActivityChat] = useState<ChatListItem | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [followError, setFollowError] = useState<string | null>(null);
@@ -1975,23 +2121,28 @@ function ActivityDetailScreen(): ReactElement {
 
       try {
         const detail = await apiClient.activities.detail<ActivityDetail>(currentActivityId);
-        const [vibeResult, hostProfile] = await Promise.all([
+        const [vibeResult, hostProfile, chatItem] = await Promise.all([
           apiClient.activities
             .vibe<ActivityVibe>(currentActivityId)
             .catch((): ActivityVibe | null => null),
-          apiClient.profiles.public<PublicProfile>(detail.host_id)
+          apiClient.profiles.public<PublicProfile>(detail.host_id),
+          apiClient.activities
+            .chat<ChatListItem>(currentActivityId)
+            .catch((): ChatListItem | null => null)
         ]);
 
         if (!cancelled) {
           setActivity(detail);
           setVibe(vibeResult);
           setHost(hostProfile);
+          setActivityChat(chatItem);
         }
       } catch (loadError) {
         if (!cancelled) {
           setActivity(null);
           setVibe(null);
           setHost(null);
+          setActivityChat(null);
           setError(loadError instanceof Error ? loadError.message : 'Unable to load activity');
         }
       } finally {
@@ -2164,6 +2315,21 @@ function ActivityDetailScreen(): ReactElement {
         </article>
 
         <aside className="detail-side">
+          {activityChat !== null ? (
+            <section className="host-card">
+              <p className="eyebrow">Group chat</p>
+              <h2>{activityChat.chat.title}</h2>
+              <button
+                className="primary-button"
+                data-testid="activity-detail-chat-button"
+                onClick={() => openChatFromSummary(navigate, activityChat)}
+                type="button"
+              >
+                Open chat
+              </button>
+            </section>
+          ) : null}
+
           {host !== null ? (
             <section className="host-card">
               <div className="host-row">
@@ -2504,12 +2670,14 @@ function ChatRoomScreen(): ReactElement {
   const currentProfileId = getCurrentProfileId();
   const [activity, setActivity] = useState<ActivityDetail | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [chatMembers, setChatMembers] = useState<ChatMemberSummary[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [hasJoinedRoom, setHasJoinedRoom] = useState(false);
+  const [accessLost, setAccessLost] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [onlineProfileIds, setOnlineProfileIds] = useState<Set<string>>(
     () => new Set(currentProfileId === null ? [] : [currentProfileId])
@@ -2573,6 +2741,32 @@ function ChatRoomScreen(): ReactElement {
   }, [loadMessages]);
 
   useEffect(() => {
+    if (chatId === undefined) {
+      setChatMembers([]);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    apiClient.chats
+      .members<ChatMemberSummary>(chatId)
+      .then((members) => {
+        if (!cancelled) {
+          setChatMembers(members);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setChatMembers([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chatId]);
+
+  useEffect(() => {
     if (activityId === null) {
       setActivity(null);
       return undefined;
@@ -2616,6 +2810,7 @@ function ChatRoomScreen(): ReactElement {
     }
 
     realtimeClient.connect();
+    setAccessLost(false);
     setHasJoinedRoom(false);
     setOnlineProfileIds(new Set(currentProfileId === null ? [] : [currentProfileId]));
     setTypingProfileIds(new Set());
@@ -2681,6 +2876,30 @@ function ChatRoomScreen(): ReactElement {
         clearTypingProfile(payload.profileId, typingTimersRef.current, setTypingProfileIds);
       }
     });
+    const offMemberRemoved = realtimeClient.on('chat:member_removed', (payload) => {
+      if (payload.chatId !== chatId) {
+        return;
+      }
+
+      setChatMembers((currentMembers) =>
+        currentMembers.filter((member) => member.profile_id !== payload.profileId)
+      );
+      setOnlineProfileIds((currentProfileIds) => {
+        const nextProfileIds = new Set(currentProfileIds);
+        nextProfileIds.delete(payload.profileId);
+        return nextProfileIds;
+      });
+      clearTypingProfile(payload.profileId, typingTimersRef.current, setTypingProfileIds);
+
+      if (payload.profileId === currentProfileId) {
+        setAccessLost(true);
+        setHasJoinedRoom(false);
+        setChatMembers([]);
+        setDraft('');
+        setError('You no longer have access to this group chat.');
+        stopTyping();
+      }
+    });
 
     return () => {
       active = false;
@@ -2689,6 +2908,7 @@ function ChatRoomScreen(): ReactElement {
       offMessage();
       offPresence();
       offTyping();
+      offMemberRemoved();
       for (const timer of typingTimersRef.current.values()) {
         window.clearTimeout(timer);
       }
@@ -2699,7 +2919,7 @@ function ChatRoomScreen(): ReactElement {
   function updateDraft(value: string): void {
     setDraft(value);
 
-    if (chatId === undefined) {
+    if (chatId === undefined || accessLost) {
       return;
     }
 
@@ -2718,7 +2938,7 @@ function ChatRoomScreen(): ReactElement {
   async function sendChatMessage(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
 
-    if (chatId === undefined || isSending || !hasJoinedRoom) {
+    if (chatId === undefined || isSending || !hasJoinedRoom || accessLost) {
       return;
     }
 
@@ -2796,6 +3016,20 @@ function ChatRoomScreen(): ReactElement {
 
       {error !== null ? <p className="inline-error">{error}</p> : null}
 
+      {chatMembers.length > 0 ? (
+        <div className="chat-member-strip" data-testid="chat-member-list">
+          {chatMembers.map((member) => (
+            <span className="chat-member-chip" key={member.profile_id}>
+              {member.display_name}
+              <small>
+                {member.role}
+                {onlineProfileIds.has(member.profile_id) ? ' · live' : ''}
+              </small>
+            </span>
+          ))}
+        </div>
+      ) : null}
+
       <div className="chat-message-list" data-testid="chat-message-list" aria-live="polite">
         {nextCursor !== null ? (
           <button
@@ -2836,6 +3070,7 @@ function ChatRoomScreen(): ReactElement {
         <textarea
           data-testid="chat-message-input"
           id="chat-message"
+          disabled={accessLost || !hasJoinedRoom}
           onChange={(event) => updateDraft(event.currentTarget.value)}
           placeholder="Write to the group"
           rows={2}
@@ -2844,7 +3079,7 @@ function ChatRoomScreen(): ReactElement {
         <button
           className="primary-button"
           data-testid="send-chat-message-button"
-          disabled={isSending || !hasJoinedRoom || draft.trim().length === 0}
+          disabled={isSending || !hasJoinedRoom || accessLost || draft.trim().length === 0}
           type="submit"
         >
           {isSending ? 'Sending...' : 'Send'}
@@ -2909,6 +3144,16 @@ function storeJoinedChatState(state: JoinedChatState): void {
   } catch {
     // Session storage can be unavailable in private or restricted browser contexts.
   }
+}
+
+function openChatFromSummary(navigate: NavigateFunction, chatItem: ChatListItem): void {
+  const state: JoinedChatState = {
+    activityId: chatItem.activity.id,
+    chat: chatItem.chat
+  };
+
+  storeJoinedChatState(state);
+  navigate(`/chats/${chatItem.chat.id}?activityId=${chatItem.activity.id}`, { state });
 }
 
 function appendUniqueMessages(

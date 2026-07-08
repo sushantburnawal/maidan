@@ -1,4 +1,10 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException
+} from '@nestjs/common';
 import { Buffer } from 'node:buffer';
 
 import type { BookingConfirmedPayload } from '@maidan/shared';
@@ -6,11 +12,14 @@ import { DEFAULT_MESSAGES_LIMIT, REALTIME_REPOSITORY } from './realtime.constant
 import type { MessagesPageQueryDto } from './dto/messages-page-query.dto';
 import type {
   BookingChatRecord,
+  ChatListItem,
+  ChatMemberRecord,
   MessageRecord,
   MessagesCursor,
   MessagesPageInput,
   PaginatedMessagesResponse,
-  RealtimeRepository
+  RealtimeRepository,
+  RemoveChatMemberResponse
 } from './realtime.types';
 
 @Injectable()
@@ -25,6 +34,30 @@ export class RealtimeService {
 
   async getChatIdsForMember(profileId: string): Promise<string[]> {
     return this.repository.findChatIdsForMember(profileId);
+  }
+
+  async findMyChats(profileId: string): Promise<ChatListItem[]> {
+    return this.repository.findChatsForProfile(profileId);
+  }
+
+  async findActivityChat(profileId: string, activityId: string): Promise<ChatListItem> {
+    const chat = await this.repository.findActivityChat(profileId, activityId);
+
+    if (chat === undefined) {
+      throw new NotFoundException('Chat not found');
+    }
+
+    return chat;
+  }
+
+  async findChatMembers(profileId: string, chatId: string): Promise<ChatMemberRecord[]> {
+    const members = await this.repository.findChatMembers(profileId, chatId);
+
+    if (members === undefined) {
+      throw new NotFoundException('Chat not found');
+    }
+
+    return members;
   }
 
   async assertChatMember(chatId: string, profileId: string): Promise<void> {
@@ -71,6 +104,34 @@ export class RealtimeService {
     }
 
     return toPaginatedMessagesResponse(messages, input.limit);
+  }
+
+  async removeChatMember(
+    actorProfileId: string,
+    chatId: string,
+    targetProfileId: string
+  ): Promise<RemoveChatMemberResponse> {
+    if (actorProfileId === targetProfileId) {
+      throw new BadRequestException('Host cannot remove themselves from the chat');
+    }
+
+    const chat = await this.repository.findChat(actorProfileId, chatId);
+
+    if (chat === undefined) {
+      throw new NotFoundException('Chat not found');
+    }
+
+    if (chat.role !== 'host') {
+      throw new ForbiddenException('Only the activity host can remove chat members');
+    }
+
+    const removed = await this.repository.removeChatMember(chatId, targetProfileId);
+
+    if (removed === undefined) {
+      throw new NotFoundException('Chat member not found');
+    }
+
+    return removed;
   }
 }
 

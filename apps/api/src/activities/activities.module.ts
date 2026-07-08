@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 import { ACTIVITIES_REPOSITORY } from './activities.constants';
 import { ActivitiesController } from './activities.controller';
 import { PostgresActivitiesRepository } from './activities.repository';
@@ -8,7 +9,7 @@ import { ActivitiesService } from './activities.service';
 import { ActivitiesVibeProxy } from './activities-vibe.proxy';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, RealtimeModule],
   controllers: [ActivitiesController],
   providers: [
     ActivitiesVibeProxy,

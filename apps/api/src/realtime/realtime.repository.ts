@@ -10,11 +10,14 @@ import type { BookingConfirmedPayload, MessageCreatedPayload } from '@maidan/sha
 import { withCurrentCorrelation } from '../observability/request-context';
 import type {
   BookingChatRecord,
+  ChatListItem,
+  ChatMemberRecord,
   CreateMessageInput,
   GroupChatRecord,
   MessageRecord,
   MessagesPageInput,
-  RealtimeRepository
+  RealtimeRepository,
+  RemoveChatMemberResponse
 } from './realtime.types';
 
 interface GroupChatRow {
@@ -22,6 +25,21 @@ interface GroupChatRow {
   activity_id: string;
   title: string;
   created_at: Date | string;
+}
+
+interface ChatListRow extends GroupChatRow {
+  activity_title: string;
+  activity_pillar: 'move' | 'learn' | 'feel';
+  activity_status: 'draft' | 'published' | 'paused' | 'archived';
+  actor_is_host: boolean;
+}
+
+interface ChatMemberRow {
+  profile_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  joined_at: Date | string;
+  is_host: boolean;
 }
 
 interface MessageRow {
@@ -73,6 +91,118 @@ export class PostgresRealtimeRepository implements RealtimeRepository, OnModuleD
         member_ids: memberIds
       };
     }, 'Failed to ensure booking chat');
+  }
+
+  async findChatsForProfile(profileId: string): Promise<ChatListItem[]> {
+    try {
+      const result = await this.getPool().query<ChatListRow>(
+        `
+          select ${chatListColumns('gc', '$1')}
+          from group_chats gc
+          join activities a on a.id = gc.activity_id
+          left join chat_members cm
+            on cm.chat_id = gc.id
+           and cm.profile_id = $1
+          where cm.profile_id is not null
+             or a.host_id = $1
+          order by gc.created_at desc, gc.id
+        `,
+        [profileId]
+      );
+
+      return result.rows.map(mapRequiredChatListItem);
+    } catch (error) {
+      throw toRepositoryError(error, 'Failed to read chats');
+    }
+  }
+
+  async findChat(profileId: string, chatId: string): Promise<ChatListItem | undefined> {
+    try {
+      const result = await this.getPool().query<ChatListRow>(
+        `
+          select ${chatListColumns('gc', '$2')}
+          from group_chats gc
+          join activities a on a.id = gc.activity_id
+          left join chat_members cm
+            on cm.chat_id = gc.id
+           and cm.profile_id = $2
+          where gc.id = $1
+            and (
+              cm.profile_id is not null
+              or a.host_id = $2
+            )
+        `,
+        [chatId, profileId]
+      );
+
+      return mapChatListItem(result.rows[0]);
+    } catch (error) {
+      throw toRepositoryError(error, 'Failed to read chat');
+    }
+  }
+
+  async findActivityChat(
+    profileId: string,
+    activityId: string
+  ): Promise<ChatListItem | undefined> {
+    try {
+      const result = await this.getPool().query<ChatListRow>(
+        `
+          select ${chatListColumns('gc', '$2')}
+          from group_chats gc
+          join activities a on a.id = gc.activity_id
+          left join chat_members cm
+            on cm.chat_id = gc.id
+           and cm.profile_id = $2
+          where gc.activity_id = $1
+            and (
+              cm.profile_id is not null
+              or a.host_id = $2
+            )
+        `,
+        [activityId, profileId]
+      );
+
+      return mapChatListItem(result.rows[0]);
+    } catch (error) {
+      throw toRepositoryError(error, 'Failed to read activity chat');
+    }
+  }
+
+  async findChatMembers(
+    profileId: string,
+    chatId: string
+  ): Promise<ChatMemberRecord[] | undefined> {
+    try {
+      if ((await this.findChat(profileId, chatId)) === undefined) {
+        return undefined;
+      }
+
+      const result = await this.getPool().query<ChatMemberRow>(
+        `
+          select
+            p.id as profile_id,
+            p.display_name,
+            p.avatar_url,
+            cm.joined_at,
+            p.id = a.host_id as is_host
+          from chat_members cm
+          join profiles p on p.id = cm.profile_id
+          join group_chats gc on gc.id = cm.chat_id
+          join activities a on a.id = gc.activity_id
+          where cm.chat_id = $1
+          order by
+            case when p.id = a.host_id then 0 else 1 end,
+            cm.joined_at asc,
+            p.display_name asc
+        `,
+        [chatId]
+      );
+
+      return result.rows.map(mapChatMember);
+    } catch (error) {
+      throw toRepositoryError(error, 'Failed to read chat members');
+    }
   }
 
   async findChatIdsForMember(profileId: string): Promise<string[]> {
@@ -169,6 +299,36 @@ export class PostgresRealtimeRepository implements RealtimeRepository, OnModuleD
       return result.rows.map(mapRequiredMessage);
     } catch (error) {
       throw toRepositoryError(error, 'Failed to read chat messages');
+    }
+  }
+
+  async removeChatMember(
+    chatId: string,
+    profileId: string
+  ): Promise<RemoveChatMemberResponse | undefined> {
+    try {
+      const result = await this.getPool().query<{ chat_id: string; profile_id: string }>(
+        `
+          delete from chat_members
+          where chat_id = $1
+            and profile_id = $2
+          returning chat_id, profile_id
+        `,
+        [chatId, profileId]
+      );
+      const removed = result.rows[0];
+
+      if (removed === undefined) {
+        return undefined;
+      }
+
+      return {
+        chat_id: removed.chat_id,
+        profile_id: removed.profile_id,
+        removed: true
+      };
+    } catch (error) {
+      throw toRepositoryError(error, 'Failed to remove chat member');
     }
   }
 
@@ -275,6 +435,21 @@ async function isChatMember(
   return result.rows[0]?.exists === true;
 }
 
+function chatListColumns(alias: string, actorProfileParam: '$1' | '$2'): string {
+  const prefix = `${alias}.`;
+
+  return `
+    ${prefix}id,
+    ${prefix}activity_id,
+    ${prefix}title,
+    ${prefix}created_at,
+    a.title as activity_title,
+    a.pillar::text as activity_pillar,
+    a.status::text as activity_status,
+    a.host_id = ${actorProfileParam}::uuid as actor_is_host
+  `;
+}
+
 function groupChatColumns(alias?: string): string {
   const prefix = alias === undefined ? '' : `${alias}.`;
 
@@ -326,11 +501,49 @@ function mapGroupChat(row: GroupChatRow | undefined): GroupChatRecord | undefine
     return undefined;
   }
 
+  return mapRequiredGroupChat(row);
+}
+
+function mapRequiredGroupChat(row: GroupChatRow): GroupChatRecord {
   return {
     id: row.id,
     activity_id: row.activity_id,
     title: row.title,
     created_at: toIsoTimestamp(row.created_at)
+  };
+}
+
+function mapChatListItem(row: ChatListRow | undefined): ChatListItem | undefined {
+  if (row === undefined) {
+    return undefined;
+  }
+
+  return mapRequiredChatListItem(row);
+}
+
+function mapRequiredChatListItem(row: ChatListRow): ChatListItem {
+  const role = row.actor_is_host ? 'host' : 'member';
+
+  return {
+    chat: mapRequiredGroupChat(row),
+    activity: {
+      id: row.activity_id,
+      title: row.activity_title,
+      pillar: row.activity_pillar,
+      status: row.activity_status
+    },
+    role,
+    can_manage: role === 'host'
+  };
+}
+
+function mapChatMember(row: ChatMemberRow): ChatMemberRecord {
+  return {
+    profile_id: row.profile_id,
+    display_name: row.display_name,
+    avatar_url: row.avatar_url,
+    joined_at: toIsoTimestamp(row.joined_at),
+    role: row.is_host ? 'host' : 'member'
   };
 }
 

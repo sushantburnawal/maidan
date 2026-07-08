@@ -20,6 +20,11 @@ export interface ChatJoinedEvent {
   memberIds: string[];
 }
 
+export interface ChatMemberRemovedEvent {
+  chatId: string;
+  profileId: string;
+}
+
 export interface PresenceEvent {
   chatId?: string;
   profileId: string;
@@ -60,6 +65,7 @@ interface ClientToServerEvents {
 interface ServerToClientEvents {
   'booking:confirmed': (payload: BookingConfirmedEvent) => void;
   'chat:joined': (payload: ChatJoinedEvent) => void;
+  'chat:member_removed': (payload: ChatMemberRemovedEvent) => void;
   'domain:event': (event: DomainEventEnvelope) => void;
   'feed:new': (payload: Post) => void;
   'message:new': (message: CompactMessage) => void;

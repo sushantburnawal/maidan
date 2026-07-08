@@ -39,6 +39,7 @@ SUTRADHAR_SYSTEM_PROMPT = "\n".join(
 MAX_TOOL_ITERATIONS = 4
 MEMORY_TTL_SECONDS = 60 * 60 * 24
 MAX_MEMORY_MESSAGES = 8
+SUTRADHAR_RATE_LIMIT_MESSAGE = "No Money No honey babes, out of tokens coz they are $$$"
 
 SUTRADHAR_TOOLS: tuple[LLMTool, ...] = (
     {
@@ -660,7 +661,22 @@ class SutradharService:
         )
 
     async def stream_chat(self, request: SutradharChatRequest) -> AsyncIterator[str]:
-        result = await self.chat(request)
+        try:
+            result = await self.chat(request)
+        except Exception as error:
+            if not is_rate_limit_error(error):
+                raise
+            yield sse_event({"type": "delta", "text": SUTRADHAR_RATE_LIMIT_MESSAGE})
+            yield sse_event(
+                {
+                    "type": "final",
+                    "activity_ids": [],
+                    "demand_signal_id": None,
+                    "error": "rate_limited",
+                }
+            )
+            return
+
         for chunk in text_chunks(result.answer):
             yield sse_event({"type": "delta", "text": chunk})
         yield sse_event(
@@ -884,6 +900,11 @@ def text_chunks(text: str, *, max_length: int = 180) -> list[str]:
 
 def sse_event(payload: JsonObject) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=True, separators=(',', ':'))}\n\n"
+
+
+def is_rate_limit_error(error: Exception) -> bool:
+    message = str(error).lower()
+    return "rate limit" in message or "429" in message
 
 
 def activity_search_result_from_row(row: object) -> ActivitySearchResult:

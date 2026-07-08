@@ -18,7 +18,7 @@ import { RedisInfrastructure } from '../redis/redis.infrastructure';
 import { parseDomainPayload } from './domain-payload.parser';
 import { realtimeUserPresenceKey } from './realtime.constants';
 import { RealtimeService } from './realtime.service';
-import type { BookingChatRecord, MessageRecord } from './realtime.types';
+import type { BookingChatRecord, MessageRecord, RemoveChatMemberResponse } from './realtime.types';
 
 type Ack<T> = (response: T) => void;
 
@@ -31,6 +31,7 @@ interface ClientToServerEvents {
 interface ServerToClientEvents {
   'booking:confirmed': (payload: BookingConfirmedSocketEvent) => void;
   'chat:joined': (payload: ChatJoinedSocketEvent) => void;
+  'chat:member_removed': (payload: ChatMemberRemovedSocketEvent) => void;
   'domain:event': (event: DomainEventEnvelope) => void;
   'feed:new': (payload: Record<string, unknown>) => void;
   'message:new': (message: MessageRecord) => void;
@@ -79,6 +80,11 @@ interface BookingConfirmedSocketEvent {
 interface ChatJoinedSocketEvent {
   chat: BookingChatRecord['chat'];
   memberIds: string[];
+}
+
+interface ChatMemberRemovedSocketEvent {
+  chatId: string;
+  profileId: string;
 }
 
 interface PresenceSocketEvent {
@@ -178,6 +184,25 @@ export class RealtimeGateway implements OnApplicationBootstrap, OnModuleDestroy 
 
     if (event.event_type === 'post.created') {
       io.emit('feed:new', event.payload);
+    }
+  }
+
+  async publishChatMemberRemoved(removed: RemoveChatMemberResponse): Promise<void> {
+    const payload: ChatMemberRemovedSocketEvent = {
+      chatId: removed.chat_id,
+      profileId: removed.profile_id
+    };
+    const io = this.getServer();
+    const room = chatRoom(removed.chat_id);
+    const targetRoom = userRoom(removed.profile_id);
+
+    io.to(room).to(targetRoom).emit('chat:member_removed', payload);
+
+    const targetSockets = await io.in(targetRoom).fetchSockets();
+
+    for (const socket of targetSockets) {
+      socket.data.joinedChatIds.delete(removed.chat_id);
+      await socket.leave(room);
     }
   }
 

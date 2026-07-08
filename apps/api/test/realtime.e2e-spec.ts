@@ -6,6 +6,8 @@ import type { AddressInfo } from 'node:net';
 import { io, type Socket as ClientSocket } from 'socket.io-client';
 
 import type { BookingConfirmedPayload } from '@maidan/shared';
+import { ActivitiesController } from '../src/activities/activities.controller';
+import { ActivitiesService } from '../src/activities/activities.service';
 import { AuthService } from '../src/auth/auth.service';
 import type { AuthenticatedUser } from '../src/auth/auth.types';
 import { REALTIME_REPOSITORY } from '../src/realtime/realtime.constants';
@@ -13,11 +15,14 @@ import { RealtimeGateway } from '../src/realtime/realtime.gateway';
 import { RealtimeModule } from '../src/realtime/realtime.module';
 import type {
   BookingChatRecord,
+  ChatListItem,
+  ChatMemberRecord,
   CreateMessageInput,
   GroupChatRecord,
   MessageRecord,
   MessagesPageInput,
-  RealtimeRepository
+  RealtimeRepository,
+  RemoveChatMemberResponse
 } from '../src/realtime/realtime.types';
 
 class FakeAuthService {
@@ -38,6 +43,8 @@ interface FakeActivity {
   id: string;
   host_id: string;
   title: string;
+  pillar: 'move' | 'learn' | 'feel';
+  status: 'draft' | 'published' | 'paused' | 'archived';
 }
 
 interface FakeDomainEvent {
@@ -66,13 +73,20 @@ class FakeRealtimeRepository implements RealtimeRepository {
     this.messageSequence = 0;
   }
 
-  addActivity(input: { host_id: string; title: string }): string {
+  addActivity(input: {
+    host_id: string;
+    title: string;
+    pillar?: 'move' | 'learn' | 'feel';
+    status?: 'draft' | 'published' | 'paused' | 'archived';
+  }): string {
     const id = randomUUID();
 
     this.activities.set(id, {
       id,
       host_id: input.host_id,
-      title: input.title
+      title: input.title,
+      pillar: input.pillar ?? 'move',
+      status: input.status ?? 'published'
     });
 
     return id;
@@ -122,6 +136,63 @@ class FakeRealtimeRepository implements RealtimeRepository {
     return Array.from(this.members.entries())
       .filter(([, memberIds]) => memberIds.has(profileId))
       .map(([chatId]) => chatId);
+  }
+
+  async findChatsForProfile(profileId: string): Promise<ChatListItem[]> {
+    return Array.from(this.chats.values())
+      .filter((chat) => this.canAccessChat(profileId, chat))
+      .map((chat) => this.chatListItem(profileId, chat));
+  }
+
+  async findChat(profileId: string, chatId: string): Promise<ChatListItem | undefined> {
+    const chat = this.chats.get(chatId);
+
+    if (chat === undefined || !this.canAccessChat(profileId, chat)) {
+      return undefined;
+    }
+
+    return this.chatListItem(profileId, chat);
+  }
+
+  async findActivityChat(
+    profileId: string,
+    activityId: string
+  ): Promise<ChatListItem | undefined> {
+    const chatId = this.chatIdsByActivity.get(activityId);
+    const chat = chatId === undefined ? undefined : this.chats.get(chatId);
+
+    if (chat === undefined || !this.canAccessChat(profileId, chat)) {
+      return undefined;
+    }
+
+    return this.chatListItem(profileId, chat);
+  }
+
+  async findChatMembers(
+    profileId: string,
+    chatId: string
+  ): Promise<ChatMemberRecord[] | undefined> {
+    const chat = this.chats.get(chatId);
+
+    if (chat === undefined || !this.canAccessChat(profileId, chat)) {
+      return undefined;
+    }
+
+    const activity = this.activities.get(chat.activity_id);
+
+    if (activity === undefined) {
+      return undefined;
+    }
+
+    return Array.from(this.members.get(chatId) ?? [])
+      .sort((left, right) => Number(right === activity.host_id) - Number(left === activity.host_id))
+      .map((memberId) => ({
+        profile_id: memberId,
+        display_name: memberId === activity.host_id ? 'Host' : 'Explorer',
+        avatar_url: null,
+        joined_at: '2026-06-17T08:00:00.000Z',
+        role: memberId === activity.host_id ? 'host' : 'member'
+      }));
   }
 
   async isChatMember(chatId: string, profileId: string): Promise<boolean> {
@@ -196,6 +267,23 @@ class FakeRealtimeRepository implements RealtimeRepository {
     return messages.slice(0, input.limit).map(cloneMessage);
   }
 
+  async removeChatMember(
+    chatId: string,
+    profileId: string
+  ): Promise<RemoveChatMemberResponse | undefined> {
+    const members = this.members.get(chatId);
+
+    if (members === undefined || !members.delete(profileId)) {
+      return undefined;
+    }
+
+    return {
+      chat_id: chatId,
+      profile_id: profileId,
+      removed: true
+    };
+  }
+
   private findOrCreateChat(activity: FakeActivity): GroupChatRecord {
     const existingChatId = this.chatIdsByActivity.get(activity.id);
 
@@ -220,6 +308,37 @@ class FakeRealtimeRepository implements RealtimeRepository {
 
     return chat;
   }
+
+  private canAccessChat(profileId: string, chat: GroupChatRecord): boolean {
+    const activity = this.activities.get(chat.activity_id);
+
+    return (
+      this.members.get(chat.id)?.has(profileId) === true ||
+      (activity !== undefined && activity.host_id === profileId)
+    );
+  }
+
+  private chatListItem(profileId: string, chat: GroupChatRecord): ChatListItem {
+    const activity = this.activities.get(chat.activity_id);
+
+    if (activity === undefined) {
+      throw new Error('Activity missing for fake chat');
+    }
+
+    const role = activity.host_id === profileId ? 'host' : 'member';
+
+    return {
+      chat: cloneChat(chat),
+      activity: {
+        id: activity.id,
+        title: activity.title,
+        pillar: activity.pillar,
+        status: activity.status
+      },
+      role,
+      can_manage: role === 'host'
+    };
+  }
 }
 
 interface ChatJoinedPayload {
@@ -231,6 +350,17 @@ interface MessageSendAck {
   ok: boolean;
   error?: string;
   message?: MessageRecord;
+}
+
+interface JoinAck {
+  ok: boolean;
+  error?: string;
+  chatId?: string;
+}
+
+interface ChatMemberRemovedPayload {
+  chatId: string;
+  profileId: string;
 }
 
 describe('Realtime module', () => {
@@ -252,19 +382,23 @@ describe('Realtime module', () => {
     process.env.REALTIME_STREAM_CONSUMER_DISABLED = 'true';
 
     repository = new FakeRealtimeRepository();
+    const authService = new FakeAuthService(
+      new Map([
+        [hostToken, hostProfileId],
+        [explorerToken, explorerProfileId]
+      ])
+    );
 
     const moduleRef = await Test.createTestingModule({
-      imports: [RealtimeModule]
+      imports: [RealtimeModule],
+      controllers: [ActivitiesController],
+      providers: [
+        { provide: ActivitiesService, useValue: {} },
+        { provide: AuthService, useValue: authService }
+      ]
     })
       .overrideProvider(AuthService)
-      .useValue(
-        new FakeAuthService(
-          new Map([
-            [hostToken, hostProfileId],
-            [explorerToken, explorerProfileId]
-          ])
-        )
-      )
+      .useValue(authService)
       .overrideProvider(REALTIME_REPOSITORY)
       .useValue(repository)
       .compile();
@@ -299,7 +433,7 @@ describe('Realtime module', () => {
   afterAll(async () => {
     restoreEnv('REALTIME_REDIS_ADAPTER_DISABLED', previousRealtimeRedisAdapterDisabled);
     restoreEnv('REALTIME_STREAM_CONSUMER_DISABLED', previousRealtimeStreamConsumerDisabled);
-    await app.close();
+    await app?.close();
   });
 
   it('puts host and explorer in the activity chat after booking confirmation and persists messages', async () => {
@@ -341,6 +475,60 @@ describe('Realtime module', () => {
     expect(explorerJoined.chat.id).toBe(chatId);
     expect(repository.memberIdsFor(chatId).sort()).toEqual(
       [explorerProfileId, hostProfileId].sort()
+    );
+
+    const hostChatsResponse = await app.inject({
+      method: 'GET',
+      url: '/chats/mine',
+      headers: {
+        authorization: `Bearer ${hostToken}`
+      }
+    });
+
+    expect(hostChatsResponse.statusCode).toBe(200);
+    expect(hostChatsResponse.json()).toEqual([
+      expect.objectContaining({
+        chat: expect.objectContaining({ id: chatId, activity_id: activityId }),
+        activity: expect.objectContaining({
+          id: activityId,
+          title: "Hemant's Nandi Hills sunrise trail ride",
+          pillar: 'move',
+          status: 'published'
+        }),
+        role: 'host',
+        can_manage: true
+      })
+    ]);
+
+    const activityChatResponse = await app.inject({
+      method: 'GET',
+      url: `/activities/${activityId}/chat`,
+      headers: {
+        authorization: `Bearer ${explorerToken}`
+      }
+    });
+
+    expect(activityChatResponse.statusCode).toBe(200);
+    expect(activityChatResponse.json()).toMatchObject({
+      chat: { id: chatId, activity_id: activityId },
+      role: 'member',
+      can_manage: false
+    });
+
+    const membersResponse = await app.inject({
+      method: 'GET',
+      url: `/chats/${chatId}/members`,
+      headers: {
+        authorization: `Bearer ${hostToken}`
+      }
+    });
+
+    expect(membersResponse.statusCode).toBe(200);
+    expect(membersResponse.json()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ profile_id: hostProfileId, role: 'host' }),
+        expect.objectContaining({ profile_id: explorerProfileId, role: 'member' })
+      ])
     );
 
     const hostMessagePromise = onceSocketEvent<MessageRecord>(hostSocket, 'message:new');
@@ -408,6 +596,108 @@ describe('Realtime module', () => {
       ],
       next_cursor: null
     });
+  });
+
+  it('lets only the host remove a member from an activity chat', async () => {
+    const activityId = repository.addActivity({
+      host_id: hostProfileId,
+      title: "Hemant's Nandi Hills sunrise trail ride"
+    });
+    const hostSocket = await connectSocket(serverUrl, hostToken, sockets);
+    const explorerSocket = await connectSocket(serverUrl, explorerToken, sockets);
+    const hostJoinedPromise = onceSocketEvent<ChatJoinedPayload>(hostSocket, 'chat:joined');
+    const explorerJoinedPromise = onceSocketEvent<ChatJoinedPayload>(explorerSocket, 'chat:joined');
+    const bookingPayload: BookingConfirmedPayload = {
+      booking_id: randomUUID(),
+      slot_id: randomUUID(),
+      activity_id: activityId,
+      explorer_id: explorerProfileId,
+      host_id: hostProfileId,
+      payment_id: randomUUID(),
+      headcount: 1,
+      amount_inr: 1499,
+      confirmed_at: '2026-06-17T08:05:00.000Z'
+    };
+
+    await gateway.publishDomainEvent({
+      id: 1,
+      aggregate_type: 'booking',
+      aggregate_id: bookingPayload.booking_id,
+      event_type: 'booking.confirmed',
+      payload: bookingPayload,
+      created_at: bookingPayload.confirmed_at
+    });
+
+    const [hostJoined, explorerJoined] = await Promise.all([
+      hostJoinedPromise,
+      explorerJoinedPromise
+    ]);
+    const chatId = hostJoined.chat.id;
+
+    expect(explorerJoined.chat.id).toBe(chatId);
+
+    const nonHostKickResponse = await app.inject({
+      method: 'DELETE',
+      url: `/chats/${chatId}/members/${hostProfileId}`,
+      headers: {
+        authorization: `Bearer ${explorerToken}`
+      }
+    });
+
+    expect(nonHostKickResponse.statusCode).toBe(403);
+
+    const selfKickResponse = await app.inject({
+      method: 'DELETE',
+      url: `/chats/${chatId}/members/${hostProfileId}`,
+      headers: {
+        authorization: `Bearer ${hostToken}`
+      }
+    });
+
+    expect(selfKickResponse.statusCode).toBe(400);
+
+    const removedPromise = onceSocketEvent<ChatMemberRemovedPayload>(
+      explorerSocket,
+      'chat:member_removed'
+    );
+    const hostKickResponse = await app.inject({
+      method: 'DELETE',
+      url: `/chats/${chatId}/members/${explorerProfileId}`,
+      headers: {
+        authorization: `Bearer ${hostToken}`
+      }
+    });
+
+    expect(hostKickResponse.statusCode).toBe(200);
+    expect(hostKickResponse.json()).toEqual({
+      chat_id: chatId,
+      profile_id: explorerProfileId,
+      removed: true
+    });
+    await expect(removedPromise).resolves.toEqual({
+      chatId,
+      profileId: explorerProfileId
+    });
+    expect(repository.memberIdsFor(chatId)).toEqual([hostProfileId]);
+
+    const historyResponse = await app.inject({
+      method: 'GET',
+      url: `/chats/${chatId}/messages`,
+      headers: {
+        authorization: `Bearer ${explorerToken}`
+      }
+    });
+
+    expect(historyResponse.statusCode).toBe(404);
+
+    const sendAck = await emitWithAck<MessageSendAck>(explorerSocket, 'message:send', {
+      chatId,
+      body: 'Can I still post?'
+    });
+    expect(sendAck).toMatchObject({ ok: false });
+
+    const joinAck = await emitWithAck<JoinAck>(explorerSocket, 'join', { chatId });
+    expect(joinAck).toMatchObject({ ok: false });
   });
 });
 

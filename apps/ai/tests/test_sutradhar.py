@@ -24,6 +24,7 @@ from maidan_ai.sutradhar import (
     ActivitySlotSummary,
     NearHint,
     Pillar,
+    SUTRADHAR_RATE_LIMIT_MESSAGE,
     SutradharChatRequest,
     SutradharMemory,
     SutradharService,
@@ -189,6 +190,46 @@ def test_sutradhar_endpoint_requires_internal_token_and_streams_sse(
     asyncio.run(run())
 
 
+def test_sutradhar_rate_limit_streams_structured_response(monkeypatch: MonkeyPatch) -> None:
+    async def run() -> None:
+        monkeypatch.setenv("AI_INTERNAL_TOKEN", "test-internal-token")
+        app = create_app()
+        app.state.settings = Settings()
+        app.state.sutradhar_service = SutradharService(
+            client=RateLimitedSutradharClient(),
+            repository=FakeSutradharStore([seeded_indiranagar_activity()]),
+            memory=SutradharMemory(FakeRedis()),
+        )
+
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as http:
+            response = await http.post(
+                "/sutradhar/chat",
+                headers={"authorization": "Bearer test-internal-token"},
+                json={
+                    "message": "find me a calm morning thing near Indiranagar this weekend",
+                    "sessionId": "session-rate-limit",
+                    "profileId": "profile-nisha",
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+
+        events = parse_sse(response.text)
+        assert events == [
+            {"type": "delta", "text": SUTRADHAR_RATE_LIMIT_MESSAGE},
+            {
+                "type": "final",
+                "activity_ids": [],
+                "demand_signal_id": None,
+                "error": "rate_limited",
+            },
+        ]
+
+    asyncio.run(run())
+
+
 SEEDED_ACTIVITY_ID = "11111111-1111-4111-8111-111111111111"
 
 
@@ -274,6 +315,19 @@ class FakeSutradharClient:
             }
         )
         return self.responses.pop(0)
+
+
+class RateLimitedSutradharClient:
+    async def chat_call(
+        self,
+        messages: Sequence[LLMMessage],
+        *,
+        system: str | None = None,
+        max_tokens: int = 1024,
+        tools: Sequence[LLMTool],
+    ) -> LLMResponse:
+        del messages, system, max_tokens, tools
+        raise RuntimeError("OpenRouter rate limit persisted after retries (429)")
 
 
 class FakeSutradharStore:
