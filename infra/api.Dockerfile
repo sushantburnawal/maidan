@@ -15,6 +15,7 @@ RUN pnpm install --frozen-lockfile=false
 
 COPY packages/shared packages/shared
 COPY apps/api apps/api
+COPY db/migrations db/migrations
 
 RUN pnpm --filter @maidan/shared build && pnpm --filter @maidan/api build
 
@@ -27,6 +28,7 @@ COPY --from=build /app/node_modules node_modules
 COPY --from=build /app/package.json package.json
 COPY --from=build /app/apps/api apps/api
 COPY --from=build /app/packages/shared packages/shared
+COPY --from=build /app/db db
 
 EXPOSE 3000
 
