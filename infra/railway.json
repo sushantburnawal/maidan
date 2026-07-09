@@ -39,6 +39,16 @@
         "healthcheckTimeout": 100,
         "restartPolicyType": "ON_FAILURE"
       }
+    },
+    "postgis": {
+      "rootDirectory": ".",
+      "build": {
+        "builder": "DOCKERFILE",
+        "dockerfilePath": "infra/postgis/Dockerfile"
+      },
+      "deploy": {
+        "restartPolicyType": "ON_FAILURE"
+      }
     }
   },
   "plugins": {
