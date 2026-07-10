@@ -340,11 +340,15 @@ describe('Payments module', () => {
   const strangerToken = 'stranger-token';
   const webhookSecret = 'test-phonepe-webhook-secret';
   const previousWebhookSecret = process.env.PHONEPE_WEBHOOK_SECRET;
+  const previousWebhookUsername = process.env.PHONEPE_WEBHOOK_USERNAME;
+  const previousWebhookPassword = process.env.PHONEPE_WEBHOOK_PASSWORD;
   const previousPlatformFeePct = process.env.PLATFORM_FEE_PCT;
   const previousPlatformFeeFloorInr = process.env.PLATFORM_FEE_FLOOR_INR;
   const previousMaidanMerchantRef = process.env.MAIDAN_PHONEPE_MERCHANT_REF;
 
   beforeAll(async () => {
+    process.env.PHONEPE_WEBHOOK_USERNAME = '';
+    process.env.PHONEPE_WEBHOOK_PASSWORD = '';
     process.env.PHONEPE_WEBHOOK_SECRET = webhookSecret;
     process.env.PLATFORM_FEE_PCT = '15';
     process.env.PLATFORM_FEE_FLOOR_INR = '0';
@@ -392,6 +396,8 @@ describe('Payments module', () => {
 
   afterAll(async () => {
     restoreEnv('PHONEPE_WEBHOOK_SECRET', previousWebhookSecret);
+    restoreEnv('PHONEPE_WEBHOOK_USERNAME', previousWebhookUsername);
+    restoreEnv('PHONEPE_WEBHOOK_PASSWORD', previousWebhookPassword);
     restoreEnv('PLATFORM_FEE_PCT', previousPlatformFeePct);
     restoreEnv('PLATFORM_FEE_FLOOR_INR', previousPlatformFeeFloorInr);
     restoreEnv('MAIDAN_PHONEPE_MERCHANT_REF', previousMaidanMerchantRef);

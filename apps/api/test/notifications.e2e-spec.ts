@@ -237,7 +237,8 @@ describe('Notifications module', () => {
           payment_id: paymentId,
           headcount: 1,
           amount_inr: 1499,
-          confirmed_at: '2026-06-17T08:05:00.000Z'
+          confirmed_at: '2026-06-17T08:05:00.000Z',
+          correlation_id: 'test-correlation-booking-confirmed'
         })
       )
     ).resolves.toMatchObject({
@@ -289,7 +290,8 @@ describe('Notifications module', () => {
           previous_status: 'confirmed',
           headcount: 1,
           amount_inr: 1499,
-          cancelled_at: '2026-06-17T09:00:00.000Z'
+          cancelled_at: '2026-06-17T09:00:00.000Z',
+          correlation_id: 'test-correlation-booking-cancelled'
         })
       )
     ).resolves.toMatchObject({
@@ -324,7 +326,8 @@ describe('Notifications module', () => {
         amount_inr: 1499,
         failure_code: 'AUTHORIZATION_FAILED',
         failure_reason: 'Payment authorization failed',
-        failed_at: '2026-06-17T09:05:00.000Z'
+        failed_at: '2026-06-17T09:05:00.000Z',
+        correlation_id: 'test-correlation-payment-failed'
       })
     );
     expect(pushProvider.sentMessages).toEqual([
@@ -365,7 +368,8 @@ describe('Notifications module', () => {
           sender_id: senderId,
           activity_id: activityId,
           body: 'See you at the trailhead.',
-          created_at: '2026-06-17T09:10:00.000Z'
+          created_at: '2026-06-17T09:10:00.000Z',
+          correlation_id: 'test-correlation-message-created'
         })
       )
     ).resolves.toMatchObject({
@@ -406,7 +410,8 @@ describe('Notifications module', () => {
           severity: 3,
           categories: ['violence', 'harassment'],
           reason: 'Threatens physical harm.',
-          created_at: '2026-06-17T09:15:00.000Z'
+          created_at: '2026-06-17T09:15:00.000Z',
+          correlation_id: 'test-correlation-moderation-blocked'
         })
       )
     ).resolves.toMatchObject({

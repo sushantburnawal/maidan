@@ -51,7 +51,7 @@ test.describe('Maidan local journey', () => {
       const activity = await findNearbyActivityByTitle(request, nandiTitle);
 
       await page.goto(`/activities/${activity.id}`);
-      await expect(page.getByRole('heading', { name: nandiTitle })).toBeVisible({
+      await expect(page.getByRole('heading', { level: 1, name: nandiTitle })).toBeVisible({
         timeout: 30_000
       });
       activityId = activity.id;
@@ -59,7 +59,7 @@ test.describe('Maidan local journey', () => {
 
     await test.step('book and complete the fake payment', async () => {
       await page.getByTestId('slot-join-button').first().click();
-      await expect(page.getByRole('heading', { name: nandiTitle })).toBeVisible({
+      await expect(page.getByRole('heading', { level: 1, name: nandiTitle })).toBeVisible({
         timeout: 30_000
       });
 
@@ -77,7 +77,7 @@ test.describe('Maidan local journey', () => {
     await test.step('send a group chat message', async () => {
       const chatMessage = `W10 e2e chat ${Date.now()}`;
 
-      await expect(page.getByRole('heading', { name: nandiTitle })).toBeVisible({
+      await expect(page.getByRole('heading', { level: 1, name: nandiTitle })).toBeVisible({
         timeout: 30_000
       });
       await page.getByTestId('chat-message-input').fill(chatMessage);
@@ -99,14 +99,14 @@ test.describe('Maidan local journey', () => {
       });
       await page.getByTestId('joined-activity-chat-button').first().click();
       await expect(page).toHaveURL(/\/chats\/.+activityId=/, { timeout: 30_000 });
-      await expect(page.getByRole('heading', { name: nandiTitle })).toBeVisible({
+      await expect(page.getByRole('heading', { level: 1, name: nandiTitle })).toBeVisible({
         timeout: 30_000
       });
     });
 
     await test.step('follow Hemant from the activity detail', async () => {
       await page.goto(`/activities/${activityId}`);
-      await expect(page.getByRole('heading', { name: nandiTitle })).toBeVisible({
+      await expect(page.getByRole('heading', { level: 1, name: nandiTitle })).toBeVisible({
         timeout: 30_000
       });
       await expect(page.getByTestId('activity-detail-chat-button')).toBeVisible({

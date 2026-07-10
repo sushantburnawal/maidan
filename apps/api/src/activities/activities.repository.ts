@@ -317,10 +317,7 @@ export class PostgresActivitiesRepository implements ActivitiesRepository, OnMod
           left join lateral (${nextOpenSlotSql('a')}) next_slot on true
           left join lateral (${fairnessMedianSql('a')}) fairness on true
           where ${whereSql}
-          order by (
-            (coalesce(${distanceSql}, 0) / greatest($${orderRadiusParameter}, 1)) * 0.75
-            + (least(extract(epoch from (now() - a.created_at)) / 86400, 30) / 30) * 0.25
-          ) asc,
+          order by ${nearbyOrderSql(distanceSql, orderRadiusParameter)} asc,
           a.created_at desc
           limit 100
         `,
@@ -776,7 +773,7 @@ function computeFairnessScore(basePriceInr: number, median: number | null): numb
   return Math.max(0, Math.min(100, Math.round((median / basePriceInr) * 100)));
 }
 
-function buildNearbySqlParts(query: NearbyActivitiesQuery): {
+export function buildNearbySqlParts(query: NearbyActivitiesQuery): {
   whereSql: string;
   values: unknown[];
   distanceSql: string;
@@ -826,6 +823,13 @@ function buildNearbySqlParts(query: NearbyActivitiesQuery): {
     distanceSql,
     orderRadiusParameter
   };
+}
+
+export function nearbyOrderSql(distanceSql: string, orderRadiusParameter: number): string {
+  return `(
+            (coalesce(${distanceSql}, 0::float8) / greatest($${orderRadiusParameter}::float8, 1::float8)) * 0.75
+            + (least(extract(epoch from (now() - a.created_at)) / 86400, 30) / 30) * 0.25
+          )`;
 }
 
 function isBboxQuery(query: NearbyActivitiesQuery): query is NearbyActivitiesQuery & {

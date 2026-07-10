@@ -118,7 +118,7 @@ export class NotificationsService {
   private async bookingConfirmedPlan(
     job: DomainEventJobData
   ): Promise<NotificationPlan | undefined> {
-    const parsed = bookingConfirmedPayloadSchema.safeParse(job.payload);
+    const parsed = bookingConfirmedPayloadSchema.safeParse(withoutCorrelationId(job.payload));
 
     if (!parsed.success) {
       this.logger.warn(`Ignored invalid booking.confirmed notification event=${job.id}`);
@@ -145,7 +145,7 @@ export class NotificationsService {
   private async bookingCancelledPlan(
     job: DomainEventJobData
   ): Promise<NotificationPlan | undefined> {
-    const parsed = bookingCancelledPayloadSchema.safeParse(job.payload);
+    const parsed = bookingCancelledPayloadSchema.safeParse(withoutCorrelationId(job.payload));
 
     if (!parsed.success) {
       this.logger.warn(`Ignored invalid booking.cancelled notification event=${job.id}`);
@@ -170,7 +170,7 @@ export class NotificationsService {
   }
 
   private async paymentFailedPlan(job: DomainEventJobData): Promise<NotificationPlan | undefined> {
-    const parsed = paymentFailedPayloadSchema.safeParse(job.payload);
+    const parsed = paymentFailedPayloadSchema.safeParse(withoutCorrelationId(job.payload));
 
     if (!parsed.success) {
       this.logger.warn(`Ignored invalid payment.failed notification event=${job.id}`);
@@ -200,7 +200,7 @@ export class NotificationsService {
   }
 
   private async messageCreatedPlan(job: DomainEventJobData): Promise<NotificationPlan | undefined> {
-    const parsed = messageCreatedPayloadSchema.safeParse(job.payload);
+    const parsed = messageCreatedPayloadSchema.safeParse(withoutCorrelationId(job.payload));
 
     if (!parsed.success) {
       this.logger.warn(`Ignored invalid message.created notification event=${job.id}`);
@@ -232,7 +232,7 @@ export class NotificationsService {
   private async moderationBlockedPlan(
     job: DomainEventJobData
   ): Promise<NotificationPlan | undefined> {
-    const parsed = moderationBlockedPayloadSchema.safeParse(job.payload);
+    const parsed = moderationBlockedPayloadSchema.safeParse(withoutCorrelationId(job.payload));
 
     if (!parsed.success) {
       this.logger.warn(`Ignored invalid moderation.blocked notification event=${job.id}`);
@@ -255,6 +255,13 @@ export class NotificationsService {
       offlineOnly: false
     };
   }
+}
+
+function withoutCorrelationId(payload: Record<string, unknown>): Record<string, unknown> {
+  const domainPayload = { ...payload };
+  delete domainPayload.correlation_id;
+
+  return domainPayload;
 }
 
 function toPushMessage(token: string, plan: NotificationPlan): PushMessage {

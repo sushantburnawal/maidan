@@ -360,7 +360,7 @@ function getExpectedWebhookSignature(): string | null {
   const username = process.env.PHONEPE_WEBHOOK_USERNAME;
   const password = process.env.PHONEPE_WEBHOOK_PASSWORD;
 
-  if (username !== undefined && password !== undefined) {
+  if (username !== undefined && username.length > 0 && password !== undefined && password.length > 0) {
     return createPhonePeWebhookAuthorizationFromCredentials(username, password);
   }
 

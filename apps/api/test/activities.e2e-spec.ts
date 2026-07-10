@@ -500,6 +500,45 @@ describe('Activities module', () => {
     });
   });
 
+  it('returns published activities inside map bounds', async () => {
+    const nandiActivityId = activitiesRepository.addPublishedActivity({
+      host_id: hostProfileId,
+      title: 'Nandi Hills bounded map result',
+      description: 'A bounded-map lookup control activity.',
+      pillar: 'move',
+      category: 'cycling',
+      meeting_point: 'Nandi Hills base parking',
+      location: { lat: 13.3702, lng: 77.6835 },
+      base_price_inr: 1499,
+      capacity: 12
+    });
+    activitiesRepository.addPublishedActivity({
+      host_id: hostProfileId,
+      title: 'Mysuru bounded map control',
+      description: 'A far-away control activity.',
+      pillar: 'move',
+      category: 'yoga',
+      meeting_point: 'Mysuru Palace north gate',
+      location: { lat: 12.3052, lng: 76.6552 },
+      base_price_inr: 499,
+      capacity: 15
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/activities/nearby?north=13.5&south=13.2&east=77.9&west=77.5&pillar=move'
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    const activities = response.json() as NearbyActivityResponse[];
+    const titles = activities.map((activity) => activity.title);
+
+    expect(titles).toContain('Nandi Hills bounded map result');
+    expect(titles).not.toContain('Mysuru bounded map control');
+    expect(activities.find((activity) => activity.id === nandiActivityId)?.distance_m).toBeGreaterThan(0);
+  });
+
   it('scores an over-priced activity lower than a median-priced one', async () => {
     activitiesRepository.addPublishedActivity({
       host_id: hostProfileId,

@@ -16,7 +16,8 @@ export function parseDomainPayload<T>(
   schema: DomainPayloadSchema<T>,
   payload: Record<string, unknown>
 ): SafeParseResult<T> {
-  const { correlation_id: _correlationId, ...domainPayload } = payload;
+  const domainPayload = { ...payload };
+  delete domainPayload.correlation_id;
 
   return schema.safeParse(domainPayload);
 }
