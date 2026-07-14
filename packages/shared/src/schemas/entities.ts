@@ -20,7 +20,7 @@ export const moderationStatusSchema = z.enum(['pending', 'ok', 'blocked']);
 export const profileSchema = z
   .object({
     id: uuidSchema,
-    phone: e164PhoneSchema,
+    phone: e164PhoneSchema.nullable(),
     display_name: z.string().min(1),
     avatar_url: z.string().nullable(),
     bio: z.string().nullable(),

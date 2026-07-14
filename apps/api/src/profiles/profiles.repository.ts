@@ -12,7 +12,7 @@ import type {
 
 interface PrivateProfileRow {
   id: string;
-  phone: string;
+  phone: string | null;
   display_name: string;
   avatar_url: string | null;
   bio: string | null;

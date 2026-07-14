@@ -52,6 +52,7 @@ import {
   subscribeAuthTokens,
   type AuthTokens
 } from './lib/authTokens';
+import { signInWithGoogleForFirebaseIdToken } from './lib/firebaseAuth';
 import { realtimeClient, type CompactMessage, type RealtimeStatus } from './lib/realtime';
 
 const osmStyle: StyleSpecification = {
@@ -1978,7 +1979,7 @@ function YouScreen(): ReactElement {
       const updated = await apiClient.profiles.updateMe<
         Omit<PrivateProfile, 'follower_count' | 'following_count'>
       >({
-        displayName: displayName.trim(),
+        display_name: displayName.trim(),
         bio: bio.trim().length === 0 ? null : bio.trim(),
         interests: parseInterests(interests)
       });
@@ -3614,11 +3615,12 @@ async function createFakeWebhookAuthorization(): Promise<string> {
 function OnboardingScreen(): ReactElement {
   const navigate = useNavigate();
   const tokens = useAuthTokenState();
-  const [phone, setPhone] = useState('+919900000101');
-  const [code, setCode] = useState('');
-  const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingFirebaseIdToken, setPendingFirebaseIdToken] = useState<string | null>(null);
+  const [signupEmail, setSignupEmail] = useState<string | null>(null);
+  const [suggestedDisplayName, setSuggestedDisplayName] = useState<string | null>(null);
+  const [signupDisplayName, setSignupDisplayName] = useState('');
 
   useEffect(() => {
     if (tokens !== null) {
@@ -3626,32 +3628,81 @@ function OnboardingScreen(): ReactElement {
     }
   }, [navigate, tokens]);
 
-  async function requestOtp(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
+  function completeAuth(response: Awaited<ReturnType<typeof apiClient.auth.firebaseGoogle>>): void {
+    if ('signupRequired' in response) {
+      console.debug('[auth] Maidan profile signup required', {
+        email: response.email
+      });
+      setSignupEmail(response.email);
+      setSuggestedDisplayName(response.suggestedDisplayName ?? null);
+      setSignupDisplayName('');
+      return;
+    }
+
+    console.debug('[auth] Maidan token exchange succeeded', {
+      expiresInSeconds: response.expiresInSeconds
+    });
+    setAuthTokens(response);
+    navigate('/map', { replace: true });
+  }
+
+  async function signInWithGoogle(): Promise<void> {
     setIsSubmitting(true);
     setError(null);
+    setPendingFirebaseIdToken(null);
+    setSignupEmail(null);
+    setSuggestedDisplayName(null);
+    setSignupDisplayName('');
 
     try {
-      await apiClient.auth.requestOtp(phone);
-      setStep('otp');
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Unable to request OTP');
+      console.debug('[auth] starting Firebase Google sign-in');
+      const firebaseIdToken = await signInWithGoogleForFirebaseIdToken();
+      console.debug('[auth] exchanging Firebase ID token with Maidan API', {
+        tokenLength: firebaseIdToken.length
+      });
+      setPendingFirebaseIdToken(firebaseIdToken);
+      completeAuth(await apiClient.auth.firebaseGoogle(firebaseIdToken));
+    } catch (signInError) {
+      console.error('[auth] Firebase Google sign-in failed', signInError);
+      setError(signInError instanceof Error ? signInError.message : 'Unable to sign in with Google');
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  async function verifyOtp(event: FormEvent<HTMLFormElement>): Promise<void> {
+  async function completeGoogleSignup(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+
+    if (pendingFirebaseIdToken === null) {
+      setError('Start with Google sign-in again');
+      return;
+    }
+
+    const normalizedName = signupDisplayName.trim();
+
+    if (normalizedName.length === 0) {
+      setError('Enter your name as per Aadhaar identity.');
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
 
     try {
-      const verifiedTokens = await apiClient.auth.verifyOtp(phone, code);
-      setAuthTokens(verifiedTokens);
-      navigate('/map', { replace: true });
-    } catch (verifyError) {
-      setError(verifyError instanceof Error ? verifyError.message : 'Unable to verify OTP');
+      console.debug('[auth] creating Maidan profile for Firebase Google user', {
+        nameLength: normalizedName.length
+      });
+      const response = await apiClient.auth.firebaseGoogle(pendingFirebaseIdToken, normalizedName);
+
+      if ('signupRequired' in response) {
+        setError('Enter your name as per Aadhaar identity.');
+        return;
+      }
+
+      completeAuth(response);
+    } catch (signupError) {
+      console.error('[auth] Firebase Google profile creation failed', signupError);
+      setError(signupError instanceof Error ? signupError.message : 'Unable to create your profile');
     } finally {
       setIsSubmitting(false);
     }
@@ -3663,55 +3714,44 @@ function OnboardingScreen(): ReactElement {
         <p className="eyebrow">Maidan</p>
         <h1>Step into your local circle</h1>
         <p className="onboarding-copy">
-          Sign in with phone OTP. Local seed explorer: +919900000101.
+          Sign in with your Google account to explore local wellness circles.
         </p>
 
-        {step === 'phone' ? (
-          <form className="auth-form" onSubmit={(event) => void requestOtp(event)}>
-            <label htmlFor="phone">Phone</label>
-            <input
-              autoComplete="tel"
-              id="phone"
-              inputMode="tel"
-              name="phone"
-              onChange={(event) => setPhone(event.target.value)}
-              required
-              type="tel"
-              value={phone}
-            />
-            <button className="primary-button" disabled={isSubmitting} type="submit">
-              {isSubmitting ? 'Sending...' : 'Send OTP'}
-            </button>
-          </form>
+        {pendingFirebaseIdToken === null || signupEmail === null ? (
+          <button
+            className="primary-button"
+            data-testid="google-sign-in-button"
+            disabled={isSubmitting}
+            onClick={() => void signInWithGoogle()}
+            type="button"
+          >
+            {isSubmitting ? 'Signing in...' : 'Continue with Google'}
+          </button>
         ) : (
-          <form className="auth-form" onSubmit={(event) => void verifyOtp(event)}>
-            <label htmlFor="otp">OTP</label>
-            <input
-              autoComplete="one-time-code"
-              id="otp"
-              inputMode="numeric"
-              maxLength={6}
-              name="otp"
-              onChange={(event) => setCode(event.target.value)}
-              pattern="[0-9]{6}"
-              required
-              type="text"
-              value={code}
-            />
-            <button className="primary-button" disabled={isSubmitting} type="submit">
-              {isSubmitting ? 'Verifying...' : 'Verify and enter'}
-            </button>
+          <form className="profile-form" onSubmit={(event) => void completeGoogleSignup(event)}>
+            <p className="muted-copy">Connected as {signupEmail}</p>
+            <label>
+              Full name
+              <input
+                aria-describedby="signup-display-name-hint"
+                autoComplete="name"
+                data-testid="signup-display-name-input"
+                maxLength={80}
+                onChange={(event) => setSignupDisplayName(event.currentTarget.value)}
+                placeholder={suggestedDisplayName ?? 'Your full name'}
+                value={signupDisplayName}
+              />
+            </label>
+            <p className="muted-copy" id="signup-display-name-hint">
+              Enter your name as per Aadhaar identity.
+            </p>
             <button
-              className="text-button"
-              disabled={isSubmitting}
-              onClick={() => {
-                setCode('');
-                setStep('phone');
-                setError(null);
-              }}
-              type="button"
+              className="primary-button"
+              data-testid="complete-google-signup-button"
+              disabled={isSubmitting || signupDisplayName.trim().length === 0}
+              type="submit"
             >
-              Change phone
+              {isSubmitting ? 'Creating profile...' : 'Create account'}
             </button>
           </form>
         )}

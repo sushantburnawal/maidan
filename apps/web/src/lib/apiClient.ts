@@ -9,7 +9,6 @@ import type {
   InitPaymentDto,
   NearbyQueryDto,
   UpdateActivityDto,
-  UpdateProfileDto,
   UpdateSlotDto
 } from '@maidan/shared';
 
@@ -38,6 +37,25 @@ export interface ApiRequestOptions {
   query?: Record<string, string | number | boolean | null | undefined>;
 }
 
+export interface FirebaseGoogleSignupRequiredResponse {
+  signupRequired: true;
+  email: string;
+  suggestedDisplayName?: string;
+}
+
+export type FirebaseGoogleAuthResponse = AuthTokens | FirebaseGoogleSignupRequiredResponse;
+
+export interface UpdateMeDto {
+  display_name?: string;
+  bio?: string | null;
+  interests?: string[];
+  avatar_url?: string | null;
+  home_location?: {
+    lat: number;
+    lng: number;
+  } | null;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -54,6 +72,12 @@ export const apiClient = {
   getReady: () => request<ReadyResponse>('/health/ready'),
   request,
   auth: {
+    firebaseGoogle: (idToken: string, displayName?: string) =>
+      request<FirebaseGoogleAuthResponse>('/auth/firebase/google', {
+        method: 'POST',
+        body: displayName === undefined ? { idToken } : { idToken, displayName },
+        auth: false
+      }),
     requestOtp: (phone: string) =>
       request<{ ok: true; expiresInSeconds: number }>('/auth/request-otp', {
         method: 'POST',
@@ -122,7 +146,7 @@ export const apiClient = {
   },
   profiles: {
     me: <TResponse>() => request<TResponse>('/me'),
-    updateMe: <TResponse>(body: UpdateProfileDto) =>
+    updateMe: <TResponse>(body: UpdateMeDto) =>
       request<TResponse>('/me', { method: 'PATCH', body }),
     becomeHost: <TResponse>(body: CreateHostProfileDto = {}) =>
       request<TResponse>('/me/become-host', { method: 'POST', body }),

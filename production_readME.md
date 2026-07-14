@@ -2,9 +2,9 @@
 
 ## Summary
 
-Deploy Maidan to Railway as a private pilot for the first real user, with three services: `api`, `ai`, and a new `web` service. Use Railway managed Postgres and Redis, production PhonePe from day one, real MSG91 OTP, and keep the existing DB schema, queue names, DTOs, and outbox contracts unchanged.
+Deploy Maidan to Railway as a private pilot for the first real user, with three services: `api`, `ai`, and a new `web` service. Use Railway managed Postgres and Redis, production PhonePe from day one, Firebase Google sign-in, and keep the existing queue names, DTOs, and outbox contracts unchanged.
 
-Success criteria: one invited Explorer can create an account by OTP, browse/book an activity, pay through live PhonePe, trigger the payment webhook, receive a confirmed booking, and access chat/profile flows on the deployed web app.
+Success criteria: one invited Explorer can create an account through Google sign-in, browse/book an activity, pay through live PhonePe, trigger the payment webhook, receive a confirmed booking, and access chat/profile flows on the deployed web app.
 
 ## Key Changes
 
@@ -12,12 +12,14 @@ Success criteria: one invited Explorer can create an account by OTP, browse/book
 - Build `apps/web` with `VITE_API_BASE_URL=https://<api-domain>`.
 - Serve the built Vite app as a Railway service.
 - Set API `CORS_ORIGIN=https://<web-domain>`.
+- Configure the Railway web domain as an authorized Firebase Authentication domain.
 - Keep API and AI Dockerfile-backed services as-is unless verification reveals build/start issues.
 - Provision Railway Postgres and Redis, then apply existing `db/migrations/*.sql` in order using the current migration workflow against the Railway `DATABASE_URL`.
 - Seed only launch-safe data: the first Host profile, one pilot activity, and one bookable slot.
 - Avoid broad demo seed data unless explicitly needed for the pilot.
 - Configure production vendor credentials:
-  - MSG91: `MSG91_API_KEY`, sender ID, OTP template ID.
+  - Firebase Auth: `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`, and the web `VITE_FIREBASE_*` config values.
+  - MSG91: keep configured only if phone OTP compatibility remains needed.
   - PhonePe: production base/auth URLs, client credentials, merchant ID, webhook credentials/secret, split settlement settings, platform fee settings, Maidan merchant reference.
   - Anthropic: production Claude keys/model env for AI readiness and Sutradhar/moderation.
   - FCM: configure credentials only if push is part of the first pilot; otherwise disable notification worker or treat push as non-blocking.
@@ -59,15 +61,15 @@ Success criteria: one invited Explorer can create an account by OTP, browse/book
 - After deploy:
   - API readiness returns healthy for DB, Redis, AI.
   - AI readiness returns healthy for DB, Redis, and Anthropic.
-  - OTP request sends a real MSG91 SMS to an allowlisted pilot phone.
-  - OTP verify creates/reuses the `profiles` row and returns access/refresh JWTs.
+  - Google sign-in returns a Firebase ID token that the API verifies and exchanges for Maidan access/refresh JWTs.
+  - Firebase Google auth creates/reuses the `profiles` row with nullable phone and unique Firebase UID.
   - Booking creation locks capacity correctly and writes `domain_events`.
   - Payment init creates a PhonePe order using server-side amount calculation.
   - PhonePe webhook marks payment terminal state and emits payment outbox event.
   - Outbox relay drains `domain_events` into Redis stream/BullMQ.
   - Web app can log in, browse, book, pay, and open chat from the Railway domain.
 - Manual failure checks:
-  - Wrong OTP fails.
+  - Invalid, non-Google, or unverified-email Firebase tokens fail.
   - Duplicate webhook is idempotent.
   - Payment amount mismatch is rejected.
   - Killing Redis or breaking AI URL flips `/health/ready` unhealthy.

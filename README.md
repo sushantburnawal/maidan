@@ -49,6 +49,12 @@ Backfill activity embeddings after seeding:
 pnpm --filter @maidan/ai embeddings:backfill
 ```
 
+For real local Google sign-in, configure the `VITE_FIREBASE_*` web values and the API
+`FIREBASE_*` Admin service account values in `.env`, and authorize `localhost` plus `127.0.0.1` in
+Firebase Authentication. For automated Playwright runs, start the API with
+`FIREBASE_AUTH_TEST_MODE=true` and `FIREBASE_AUTH_TEST_TOKEN=local-firebase-id-token`; the Playwright
+web server defaults to matching `VITE_FIREBASE_AUTH_TEST_MODE=true`.
+
 ## Health Checks
 
 With the local stack running:
@@ -130,6 +136,9 @@ JWT_ACCESS_SECRET
 JWT_REFRESH_SECRET
 JWT_ACCESS_TTL
 JWT_REFRESH_TTL
+FIREBASE_PROJECT_ID
+FIREBASE_CLIENT_EMAIL
+FIREBASE_PRIVATE_KEY
 RATE_LIMIT_AUTH_MAX
 RATE_LIMIT_AUTH_WINDOW_SECONDS
 RATE_LIMIT_WRITE_MAX
@@ -161,10 +170,19 @@ Required web env vars:
 
 ```sh
 VITE_API_BASE_URL
+VITE_FIREBASE_API_KEY
+VITE_FIREBASE_AUTH_DOMAIN
+VITE_FIREBASE_PROJECT_ID
+VITE_FIREBASE_APP_ID
 ```
 
 Set `VITE_API_BASE_URL=https://<api-domain>` before building the Railway web service, and set
 `CORS_ORIGIN=https://<web-domain>` on the API service after Railway assigns the web domain.
+For local Google sign-in, add `localhost` and `127.0.0.1` to Firebase Authentication's authorized
+domains in the Firebase console, then set the `VITE_FIREBASE_*` values from the Firebase web app
+configuration and the `FIREBASE_*` API values from a Firebase Admin service account. Automated local
+e2e tests can use `VITE_FIREBASE_AUTH_TEST_MODE=true` and `FIREBASE_AUTH_TEST_MODE=true`; do not use
+that mode in production.
 
 Required AI env vars:
 

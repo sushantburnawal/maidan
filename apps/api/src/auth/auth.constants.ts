@@ -1,4 +1,5 @@
 export const AUTH_REDIS_STORE = Symbol('AUTH_REDIS_STORE');
+export const FIREBASE_AUTH_VERIFIER = Symbol('FIREBASE_AUTH_VERIFIER');
 export const PROFILES_REPOSITORY = Symbol('PROFILES_REPOSITORY');
 export const SMS_PROVIDER = Symbol('SMS_PROVIDER');
 

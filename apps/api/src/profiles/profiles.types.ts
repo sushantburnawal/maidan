@@ -5,7 +5,7 @@ export interface GeoPoint {
 
 export interface PrivateProfileRecord {
   id: string;
-  phone: string;
+  phone: string | null;
   display_name: string;
   avatar_url: string | null;
   bio: string | null;

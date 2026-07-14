@@ -2,8 +2,14 @@ import { Module } from '@nestjs/common';
 
 import { RedisModule } from '../redis/redis.module';
 import { AuthController } from './auth.controller';
-import { AUTH_REDIS_STORE, PROFILES_REPOSITORY, SMS_PROVIDER } from './auth.constants';
+import {
+  AUTH_REDIS_STORE,
+  FIREBASE_AUTH_VERIFIER,
+  PROFILES_REPOSITORY,
+  SMS_PROVIDER
+} from './auth.constants';
 import { AuthService } from './auth.service';
+import { createFirebaseAuthVerifier } from './firebase-auth.verifier';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { OptionalJwtAuthGuard } from './optional-jwt-auth.guard';
 import { PostgresProfilesRepository } from './profiles.repository';
@@ -23,6 +29,10 @@ import { FakeSmsProvider, getMsg91AuthKey, Msg91SmsProvider } from './sms.provid
     {
       provide: PROFILES_REPOSITORY,
       useClass: PostgresProfilesRepository
+    },
+    {
+      provide: FIREBASE_AUTH_VERIFIER,
+      useFactory: createFirebaseAuthVerifier
     },
     {
       provide: SMS_PROVIDER,

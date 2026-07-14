@@ -12,13 +12,50 @@ export interface SmsProvider {
   sendOtp(phone: string, code: string): Promise<void>;
 }
 
+export interface FirebaseAuthToken {
+  uid: string;
+  email: string;
+  emailVerified: boolean;
+  displayName?: string;
+  picture?: string;
+  signInProvider?: string;
+}
+
+export interface FirebaseAuthVerifier {
+  verifyIdToken(idToken: string): Promise<FirebaseAuthToken>;
+}
+
 export interface ProfileRecord {
   id: string;
-  phone: string;
+  phone: string | null;
 }
+
+export interface FirebaseProfileIdentity {
+  firebaseUid: string;
+  email: string;
+  signupDisplayName?: string;
+  avatarUrl?: string;
+}
+
+export type FirebaseProfileMatchKind = 'email' | 'firebase_uid';
+
+export type FirebaseProfileResolution =
+  | {
+      status: 'signup_required';
+    }
+  | {
+      status: 'found';
+      matchedBy: FirebaseProfileMatchKind;
+      profile: ProfileRecord;
+    }
+  | {
+      status: 'created';
+      profile: ProfileRecord;
+    };
 
 export interface ProfilesRepository {
   findOrCreateByPhone(phone: string): Promise<ProfileRecord>;
+  resolveFirebaseIdentity(identity: FirebaseProfileIdentity): Promise<FirebaseProfileResolution>;
 }
 
 export interface AuthenticatedUser {
@@ -38,3 +75,11 @@ export interface AuthTokens {
   tokenType: 'Bearer';
   expiresInSeconds: number;
 }
+
+export interface FirebaseGoogleSignupRequiredResponse {
+  signupRequired: true;
+  email: string;
+  suggestedDisplayName?: string;
+}
+
+export type FirebaseGoogleAuthResponse = AuthTokens | FirebaseGoogleSignupRequiredResponse;

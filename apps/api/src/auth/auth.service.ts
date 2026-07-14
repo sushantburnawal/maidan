@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   HttpException,
   HttpStatus,
   Inject,
@@ -13,6 +14,7 @@ import {
   AUTH_REDIS_STORE,
   DEFAULT_ACCESS_TOKEN_TTL,
   DEFAULT_REFRESH_TOKEN_TTL,
+  FIREBASE_AUTH_VERIFIER,
   OTP_MAX_VERIFY_ATTEMPTS,
   OTP_RATE_LIMIT_MAX_REQUESTS,
   OTP_RATE_LIMIT_WINDOW_SECONDS,
@@ -24,9 +26,13 @@ import type {
   AuthRedisStore,
   AuthenticatedUser,
   AuthTokens,
+  FirebaseAuthToken,
+  FirebaseAuthVerifier,
+  FirebaseGoogleAuthResponse,
   ProfilesRepository,
   SmsProvider
 } from './auth.types';
+import { writeJsonLog } from '../observability/json-logger';
 
 interface OtpState {
   code: string;
@@ -38,6 +44,7 @@ export class AuthService {
   constructor(
     @Inject(AUTH_REDIS_STORE) private readonly redis: AuthRedisStore,
     @Inject(SMS_PROVIDER) private readonly smsProvider: SmsProvider,
+    @Inject(FIREBASE_AUTH_VERIFIER) private readonly firebaseAuthVerifier: FirebaseAuthVerifier,
     @Inject(PROFILES_REPOSITORY) private readonly profilesRepository: ProfilesRepository
   ) {}
 
@@ -81,6 +88,93 @@ export class AuthService {
     const profile = await this.profilesRepository.findOrCreateByPhone(phone);
 
     return this.issueTokens(profile.id);
+  }
+
+  async signInWithFirebaseGoogle(
+    idToken: string,
+    displayName?: string
+  ): Promise<FirebaseGoogleAuthResponse> {
+    writeJsonLog('info', 'firebase_google_auth_verify_started', {
+      token_length: idToken.length
+    });
+
+    let firebaseToken: FirebaseAuthToken;
+    try {
+      firebaseToken = await this.firebaseAuthVerifier.verifyIdToken(idToken);
+    } catch (error) {
+      writeJsonLog('warn', 'firebase_google_auth_verify_failed', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw invalidFirebaseToken();
+    }
+
+    try {
+      validateGoogleFirebaseToken(firebaseToken);
+    } catch (error) {
+      writeJsonLog('warn', 'firebase_google_auth_validation_failed', {
+        firebase_uid: firebaseToken.uid,
+        sign_in_provider: firebaseToken.signInProvider,
+        email_verified: firebaseToken.emailVerified,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
+    }
+
+    const normalizedEmail = normalizeEmail(firebaseToken.email);
+    const signupDisplayName = normalizeSignupDisplayName(displayName);
+    let resolution: Awaited<ReturnType<ProfilesRepository['resolveFirebaseIdentity']>>;
+
+    try {
+      resolution = await this.profilesRepository.resolveFirebaseIdentity({
+        firebaseUid: firebaseToken.uid,
+        email: normalizedEmail,
+        signupDisplayName,
+        avatarUrl: firebaseToken.picture
+      });
+    } catch (error) {
+      writeJsonLog('error', 'firebase_google_profile_persist_failed', {
+        firebase_uid: firebaseToken.uid,
+        error: error instanceof Error ? error.message : String(error),
+        cause: errorCauseMessage(error)
+      });
+      throw error;
+    }
+
+    if (resolution.status === 'signup_required') {
+      writeJsonLog('info', 'firebase_google_auth_signup_required', {
+        firebase_uid: firebaseToken.uid,
+        email_domain: emailDomain(normalizedEmail)
+      });
+
+      return {
+        signupRequired: true,
+        email: normalizedEmail,
+        suggestedDisplayName: suggestedGoogleDisplayName(
+          firebaseToken.displayName,
+          normalizedEmail
+        )
+      };
+    }
+
+    if (resolution.status === 'created') {
+      writeJsonLog('info', 'firebase_google_profile_created', {
+        firebase_uid: firebaseToken.uid,
+        profile_id: resolution.profile.id
+      });
+    } else {
+      writeJsonLog('info', 'firebase_google_existing_profile_login', {
+        firebase_uid: firebaseToken.uid,
+        matched_by: resolution.matchedBy,
+        profile_id: resolution.profile.id
+      });
+    }
+
+    writeJsonLog('info', 'firebase_google_auth_succeeded', {
+      firebase_uid: firebaseToken.uid,
+      profile_id: resolution.profile.id
+    });
+
+    return this.issueTokens(resolution.profile.id);
   }
 
   async refresh(refreshToken: string): Promise<AuthTokens> {
@@ -217,6 +311,80 @@ function isOtpState(value: unknown): value is OtpState {
   );
 }
 
+function validateGoogleFirebaseToken(token: FirebaseAuthToken): void {
+  if (token.uid.trim().length === 0) {
+    throw invalidFirebaseToken();
+  }
+
+  if (token.signInProvider !== 'google.com') {
+    throw invalidFirebaseToken();
+  }
+
+  if (token.emailVerified !== true || !isValidEmail(token.email)) {
+    throw invalidFirebaseToken();
+  }
+}
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function normalizeSignupDisplayName(displayName: string | undefined): string | undefined {
+  if (displayName === undefined) {
+    return undefined;
+  }
+
+  const normalizedName = displayName.trim();
+
+  if (normalizedName.length === 0) {
+    throw new BadRequestException('Display name is required');
+  }
+
+  if (normalizedName.length > 80) {
+    throw new BadRequestException('Display name must be at most 80 characters');
+  }
+
+  return normalizedName;
+}
+
+function suggestedGoogleDisplayName(displayName: string | undefined, email: string): string | undefined {
+  const normalizedName = displayName?.trim();
+
+  if (normalizedName !== undefined && normalizedName.length > 0) {
+    return normalizedName.slice(0, 80);
+  }
+
+  const localPart = email.split('@')[0]?.replace(/[._-]+/g, ' ').trim();
+
+  if (localPart === undefined || localPart.length === 0) {
+    return undefined;
+  }
+
+  return titleCase(localPart).slice(0, 80);
+}
+
+function titleCase(value: string): string {
+  return value.replace(/\S+/g, (word) => `${word[0]?.toUpperCase() ?? ''}${word.slice(1)}`);
+}
+
+function emailDomain(email: string): string | undefined {
+  return email.split('@')[1];
+}
+
+function errorCauseMessage(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null || !('cause' in error)) {
+    return undefined;
+  }
+
+  const cause = (error as { cause?: unknown }).cause;
+
+  return cause instanceof Error ? cause.message : undefined;
+}
+
 function signToken(
   payload: { typ: 'access' | 'refresh' },
   secret: string,
@@ -351,6 +519,10 @@ function requiredSecret(name: 'JWT_ACCESS_SECRET' | 'JWT_REFRESH_SECRET'): strin
 
 function invalidOtp(): UnauthorizedException {
   return new UnauthorizedException('Invalid or expired OTP');
+}
+
+function invalidFirebaseToken(): UnauthorizedException {
+  return new UnauthorizedException('Invalid Firebase Google token');
 }
 
 function invalidAccessToken(): UnauthorizedException {

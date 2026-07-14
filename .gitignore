@@ -4,10 +4,12 @@ coverage/
 playwright-report/
 test-results/
 .turbo/
+.vite-cache/
 .env
 .env.*
 !.env.example
 *.log
+*-firebase-adminsdk-*.json
 apps/ai/.venv/
 apps/ai/.pytest_cache/
 apps/ai/.ruff_cache/

@@ -180,7 +180,9 @@ describe('Profiles module', () => {
   let profilesRepository: FakeProfilesApiRepository;
 
   const profileId = randomUUID();
+  const googleProfileId = randomUUID();
   const token = 'profile-token';
+  const googleToken = 'google-profile-token';
   const phone = '+919900000321';
 
   beforeAll(async () => {
@@ -196,12 +198,30 @@ describe('Profiles module', () => {
       created_at: '2026-06-17T04:00:00.000Z',
       updated_at: '2026-06-17T04:00:00.000Z'
     });
+    profilesRepository.addProfile({
+      id: googleProfileId,
+      phone: null,
+      display_name: 'Google Explorer',
+      avatar_url: 'https://example.com/google.png',
+      bio: null,
+      interests: [],
+      home_location: null,
+      created_at: '2026-06-17T04:00:00.000Z',
+      updated_at: '2026-06-17T04:00:00.000Z'
+    });
 
     const moduleRef = await Test.createTestingModule({
       imports: [ProfilesModule]
     })
       .overrideProvider(AuthService)
-      .useValue(new FakeAuthService(new Map([[token, profileId]])))
+      .useValue(
+        new FakeAuthService(
+          new Map([
+            [token, profileId],
+            [googleToken, googleProfileId]
+          ])
+        )
+      )
       .overrideProvider(PROFILES_API_REPOSITORY)
       .useValue(profilesRepository)
       .overrideProvider(FOLLOWS_REPOSITORY)
@@ -296,6 +316,48 @@ describe('Profiles module', () => {
     expect(publicProfile).not.toHaveProperty('phone');
     expect(publicProfile).not.toHaveProperty('is_following');
     expect(publicResponse.body).not.toContain(phone);
+  });
+
+  it('returns the current Google profile with a nullable phone', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/me',
+      headers: {
+        authorization: `Bearer ${googleToken}`
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      id: googleProfileId,
+      phone: null,
+      display_name: 'Google Explorer',
+      follower_count: 0,
+      following_count: 0
+    });
+  });
+
+  it('updates bio and interests for a Google profile', async () => {
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/me',
+      headers: {
+        authorization: `Bearer ${googleToken}`
+      },
+      payload: {
+        bio: 'Bengaluru walker and pottery beginner.',
+        interests: ['walking', 'pottery']
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      id: googleProfileId,
+      phone: null,
+      display_name: 'Google Explorer',
+      bio: 'Bengaluru walker and pottery beginner.',
+      interests: ['walking', 'pottery']
+    });
   });
 
   it('rejects an invalid home_location', async () => {

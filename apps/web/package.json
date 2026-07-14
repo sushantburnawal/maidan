@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@maidan/shared": "workspace:*",
+    "firebase": "^12.16.0",
     "maplibre-gl": "^5.24.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
